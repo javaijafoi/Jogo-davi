@@ -99,12 +99,13 @@ export const PALAVRAS_CVCV: Palavra[] = [
 ];
 
 // Sílabas simples formadas com as consoantes da fase 2.
-// C só com A, O, U (CE/CI têm outro som e ficam para depois).
+// C só com A e O (CE/CI têm outro som e ficam para depois).
 export function silabasCV(): string[] {
   const out: string[] = [];
   for (const c of CONSOANTES_1) {
     for (const v of VOGAIS) {
       if (c === 'C' && (v === 'E' || v === 'I')) continue;
+      if (c === 'C' && v === 'U') continue; // evita palavrão no jogo
       out.push(c + v);
     }
   }

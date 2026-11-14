@@ -11,6 +11,7 @@ export type Progresso = {
   corSkate: string;
   sessoes: number;
   errosPorItem: Record<string, number>;
+  atualizadoEm: number;
 };
 
 const CHAVE = 'jogo-davi:v1';
@@ -24,6 +25,7 @@ export function progressoInicial(): Progresso {
     corSkate: 'roxo',
     sessoes: 0,
     errosPorItem: {},
+    atualizadoEm: 0,
   };
 }
 

@@ -1,0 +1,11 @@
+{
+  "name": "Jogo do Davi",
+  "short_name": "Jogo do Davi",
+  "lang": "pt-BR",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0d1b3e",
+  "theme_color": "#0d1b3e",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

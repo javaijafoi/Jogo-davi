@@ -82,8 +82,8 @@ button:disabled { cursor: default; }
   transition: transform 0.08s;
 }
 .botao-grande:active, .carta:active, .botao-medio:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0,0,0,.28); }
-.vermelho { background: var(--vermelho); }
-.azul { background: var(--azul); }
+.vermelho { background: var(--vermelho); color: #fff; }
+.azul { background: var(--azul); color: #fff; }
 .botao-medio {
   padding: 12px 22px;
   border-radius: 14px;
@@ -245,7 +245,6 @@ button:disabled { cursor: default; }
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
   background: rgba(13, 27, 62, 0.35);
   animation: aparece 0.2s;
-  pointer-events: none;
 }
 .balao-hq {
   background: var(--amarelo); color: var(--tinta);
@@ -315,3 +314,9 @@ button:disabled { cursor: default; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
 }
+
+.confirmar { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(6, 12, 30, 0.75); padding: 16px; }
+.confirmar .caixa { background: var(--papel); color: var(--tinta); border-radius: 24px; padding: 22px; text-align: center; max-width: 360px; width: 100%; }
+.confirmar p { font-size: 30px; font-weight: 700; margin: 0 0 16px; }
+.codigo { font-size: 22px; letter-spacing: 2px; color: #fff; font-family: ui-monospace, monospace; }
+.campo-codigo { width: 200px !important; font-size: 20px !important; text-transform: uppercase; }

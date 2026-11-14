@@ -4,6 +4,9 @@ import { Davi } from './Davi';
 import { INFO_JOGOS, JOGOS } from './games';
 import { carregar, estrelasPara, progressoInicial, proximaFase, salvar, type Progresso } from './storage';
 import { IconeTeia, Teia } from './Teia';
+import { codigoDoAparelho, enviarSessao, esvaziarFila, normalizarCodigo, servidor, trocarCodigo } from './sync';
+
+type EstadoNuvem = '...' | 'ok' | 'offline';
 
 type Tela =
   | { nome: 'inicio' }
@@ -18,7 +21,43 @@ const ELOGIOS = ['BOA!', 'ISSO AÍ!', 'MANDOU BEM!', 'DEMAIS!', 'ARRASOU!', 'SHO
 export default function App() {
   const [tela, setTela] = useState<Tela>({ nome: 'inicio' });
   const [prog, setProg] = useState<Progresso>(() => carregar());
+  const [codigo, setCodigo] = useState(() => codigoDoAparelho());
+  const [nuvem, setNuvem] = useState<EstadoNuvem>('...');
+  // Toda mudança feita pelo jogo marca a hora, para saber qual cópia é a mais nova.
+  const atualizar = (fn: (p: Progresso) => Progresso) => setProg((p) => ({ ...fn(p), atualizadoEm: Date.now() }));
+
   useEffect(() => salvar(prog), [prog]);
+
+  // Ao abrir: busca a cópia do servidor e fica com a mais nova.
+  useEffect(() => {
+    let vivo = true;
+    servidor
+      .carregar(codigo)
+      .then((remoto) => {
+        if (!vivo) return;
+        if (remoto && (remoto.atualizadoEm ?? 0) > (carregar().atualizadoEm ?? 0)) {
+          setProg({ ...progressoInicial(), ...remoto });
+        }
+        setNuvem('ok');
+      })
+      .catch(() => vivo && setNuvem('offline'));
+    esvaziarFila(codigo);
+    return () => {
+      vivo = false;
+    };
+  }, [codigo]);
+
+  // Envia para o servidor 1,5 s depois da última mudança.
+  useEffect(() => {
+    if (!prog.atualizadoEm) return;
+    const t = window.setTimeout(() => {
+      servidor
+        .salvar(codigo, prog)
+        .then(() => setNuvem('ok'))
+        .catch(() => setNuvem('offline'));
+    }, 1500);
+    return () => window.clearTimeout(t);
+  }, [prog, codigo]);
   const corSkate = CORES_SKATE.find((c) => c.id === prog.corSkate)?.cor ?? '#7b3fe4';
 
   return (
@@ -46,10 +85,10 @@ export default function App() {
           corSkate={corSkate}
           onSair={() => setTela({ nome: 'mapa' })}
           onErroItem={(item) =>
-            setProg((p) => ({ ...p, errosPorItem: { ...p.errosPorItem, [item]: (p.errosPorItem[item] ?? 0) + 1 } }))
+            atualizar((p) => ({ ...p, errosPorItem: { ...p.errosPorItem, [item]: (p.errosPorItem[item] ?? 0) + 1 } }))
           }
           onAcertoItem={(item, erros) =>
-            setProg((p) => {
+            atualizar((p) => {
               const atual = p.errosPorItem[item] ?? 0;
               const novo = erros === 0 ? Math.max(0, atual - 1) : atual;
               return { ...p, teias: p.teias + 1, errosPorItem: { ...p.errosPorItem, [item]: novo } };
@@ -64,7 +103,8 @@ export default function App() {
             const passou = taxa >= ACERTO_PARA_PASSAR;
             const liberadas = passou && prox && !p.liberadas.includes(prox) ? [...p.liberadas, prox] : p.liberadas;
             const proxCor = CORES_SKATE.find((c) => !p.coresGanhas.includes(c.id));
-            setProg((cur) => ({
+            enviarSessao(codigo, { fase: faseId, acertos, total });
+            atualizar((cur) => ({
               ...cur,
               sessoes: cur.sessoes + 1,
               liberadas: Array.from(new Set([...cur.liberadas, ...liberadas])),
@@ -97,14 +137,28 @@ export default function App() {
           onDeNovo={() => setTela({ nome: 'sessao', faseId: tela.faseId })}
           onProxima={tela.liberou ? () => setTela({ nome: 'sessao', faseId: tela.liberou! }) : undefined}
           onMapa={() => setTela({ nome: 'mapa' })}
-          onUsarCor={(id) => setProg((p) => ({ ...p, corSkate: id }))}
+          onUsarCor={(id) => atualizar((p) => ({ ...p, corSkate: id }))}
         />
       )}
       {tela.nome === 'garagem' && (
-        <Garagem prog={prog} onEscolher={(id) => setProg((p) => ({ ...p, corSkate: id }))} onVoltar={() => setTela({ nome: 'mapa' })} />
+        <Garagem prog={prog} onEscolher={(id) => atualizar((p) => ({ ...p, corSkate: id }))} onVoltar={() => setTela({ nome: 'mapa' })} />
       )}
       {tela.nome === 'adulto' && (
-        <Adulto prog={prog} setProg={setProg} onVoltar={() => setTela({ nome: 'mapa' })} />
+        <Adulto
+          prog={prog}
+          atualizar={atualizar}
+          codigo={codigo}
+          nuvem={nuvem}
+          onTrocarCodigo={async (novo) => {
+            const remoto = await servidor.carregar(novo);
+            if (!remoto) return false;
+            trocarCodigo(novo);
+            setProg({ ...progressoInicial(), ...remoto });
+            setCodigo(novo);
+            return true;
+          }}
+          onVoltar={() => setTela({ nome: 'mapa' })}
+        />
       )}
     </div>
   );
@@ -236,6 +290,7 @@ function Sessao(props: {
   const [acertos, setAcertos] = useState(0);
   const [festa, setFesta] = useState<string | null>(null);
   const [intro, setIntro] = useState(true);
+  const [sair, setSair] = useState(false);
   const fim = useRef(false);
   const jogoIdx = Math.floor(passo / RODADAS_POR_JOGO);
   const rodada = passo % RODADAS_POR_JOGO;
@@ -276,7 +331,7 @@ function Sessao(props: {
   return (
     <main className={`tela sessao trilha-${fase.trilha}`}>
       <header className="barra">
-        <button className="botao-icone" onClick={props.onSair} aria-label="Sair">
+        <button className="botao-icone" onClick={() => setSair(true)} aria-label="Sair">
           ✕
         </button>
         <div className="progresso-teias" aria-label={`${passo} de ${total}`}>
@@ -306,6 +361,21 @@ function Sessao(props: {
           />
         )}
       </div>
+      {sair && (
+        <div className="confirmar">
+          <div className="caixa">
+            <p>Parar agora?</p>
+            <div className="botoes">
+              <button className="botao-grande azul" onClick={() => setSair(false)}>
+                CONTINUAR
+              </button>
+              <button className="botao-medio" onClick={props.onSair}>
+                Sair
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {festa && (
         <div className="festa" role="status">
           <div className="balao-hq">{festa}</div>
@@ -420,13 +490,22 @@ function Garagem({ prog, onEscolher, onVoltar }: { prog: Progresso; onEscolher: 
 
 function Adulto({
   prog,
-  setProg,
+  atualizar,
+  codigo,
+  nuvem,
+  onTrocarCodigo,
   onVoltar,
 }: {
   prog: Progresso;
-  setProg: React.Dispatch<React.SetStateAction<Progresso>>;
+  atualizar: (fn: (p: Progresso) => Progresso) => void;
+  codigo: string;
+  nuvem: EstadoNuvem;
+  onTrocarCodigo: (novo: string) => Promise<boolean>;
   onVoltar: () => void;
 }) {
+  const [historico, setHistorico] = useState<{ fase: string; acertos: number; total: number; feita_em: string }[] | null>(null);
+  const [outroCodigo, setOutroCodigo] = useState('');
+  const [msgCodigo, setMsgCodigo] = useState('');
   const [conta] = useState(() => {
     const a = 3 + Math.floor(Math.random() * 6);
     const b = 3 + Math.floor(Math.random() * 6);
@@ -500,7 +579,7 @@ function Adulto({
                       type="checkbox"
                       checked={prog.liberadas.includes(f.id)}
                       onChange={(e) =>
-                        setProg((p) => ({
+                        atualizar((p) => ({
                           ...p,
                           liberadas: e.target.checked
                             ? [...p.liberadas, f.id]
@@ -515,6 +594,43 @@ function Adulto({
           </tbody>
         </table>
         <p className="nota">Passa de fase com 80% de acerto de primeira. Sessões feitas: {prog.sessoes}.</p>
+      </section>
+      <section className="painel">
+        <h3>Evolução</h3>
+        {historico === null ? (
+          <button
+            className="botao-medio"
+            onClick={() =>
+              servidor
+                .historico(codigo)
+                .then(setHistorico)
+                .catch(() => setHistorico([]))
+            }
+          >
+            Ver sessões salvas
+          </button>
+        ) : historico.length === 0 ? (
+          <p className="nota">Nenhuma sessão salva no servidor ainda (ou sem internet).</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Dia</th>
+                <th>Fase</th>
+                <th>Acerto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {historico.slice(0, 50).map((h, i) => (
+                <tr key={i}>
+                  <td>{new Date(h.feita_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                  <td>{FASES.find((f) => f.id === h.fase)?.titulo ?? h.fase}</td>
+                  <td>{Math.round((h.acertos / h.total) * 100)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </section>
       <section className="painel">
         <h3>Onde ele mais erra</h3>
@@ -532,6 +648,31 @@ function Adulto({
         <p className="nota">Esses itens voltam com mais frequência nas próximas sessões.</p>
       </section>
       <section className="painel">
+        <h3>Cópia no servidor</h3>
+        <p className="nota">
+          {nuvem === 'ok' ? '✅ Progresso salvo no servidor.' : nuvem === 'offline' ? '⚠️ Sem conexão: salvo só neste aparelho por enquanto.' : 'Verificando…'}
+        </p>
+        <p className="nota">
+          Código do jogador: <b className="codigo">{codigo}</b>
+        </p>
+        <p className="nota">Anote este código. Em outro celular ou tablet, digite-o abaixo para continuar de onde parou.</p>
+        <form
+          className="porta"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const c = normalizarCodigo(outroCodigo);
+            if (c.length < 8) return setMsgCodigo('Código incompleto.');
+            setMsgCodigo('Buscando…');
+            const ok = await onTrocarCodigo(c).catch(() => false);
+            setMsgCodigo(ok ? 'Pronto! Progresso recuperado.' : 'Não achei esse código.');
+          }}
+        >
+          <input className="campo-codigo" placeholder="XXXXX-XXXXX" value={outroCodigo} onChange={(e) => setOutroCodigo(e.target.value)} />
+          <button className="botao-medio">Usar</button>
+        </form>
+        {msgCodigo && <p className="nota">{msgCodigo}</p>}
+      </section>
+      <section className="painel">
         <h3>Como usar</h3>
         <ul className="nota">
           <li>Sessões curtas: uma fase por vez, cerca de 10 minutos, de preferência todo dia.</li>
@@ -546,7 +687,7 @@ function Adulto({
             <button
               className="botao-medio perigo"
               onClick={() => {
-                setProg(progressoInicial());
+                atualizar(() => progressoInicial());
                 setConfirmarZerar(false);
               }}
             >
