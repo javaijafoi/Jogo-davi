@@ -122,11 +122,17 @@ export type TipoJogo =
   | 'junta-silaba'
   | 'silaba-inicial'
   | 'monta-palavra'
-  | 'conta-teia';
+  | 'conta-teia'
+  | 'letra-que-falta'
+  | 'liga-letra'
+  | 'toque-quantidade'
+  | 'depois'
+  | 'soma'
+  | 'subtracao';
 
 export type Fase = {
   id: string;
-  trilha: 'letras' | 'numeros';
+  trilha: 'letras' | 'numeros' | 'contas';
   numero: string;
   titulo: string;
   descricao: string;
@@ -136,6 +142,8 @@ export type Fase = {
   silabas?: string[];
   palavras?: Palavra[];
   faixa?: [number, number];
+  // contas: maior resultado (soma) ou maior número de partida (subtração)
+  maximo?: number;
 };
 
 export const FASES: Fase[] = [
@@ -145,7 +153,7 @@ export const FASES: Fase[] = [
     numero: '1',
     titulo: 'Vogais',
     descricao: 'A E I O U',
-    jogos: ['caca-letra', 'teia-letras', 'caca-letra'],
+    jogos: ['caca-letra', 'teia-letras', 'letra-que-falta', 'liga-letra'],
     letras: [...VOGAIS],
   },
   {
@@ -154,7 +162,7 @@ export const FASES: Fase[] = [
     numero: '2',
     titulo: 'Primeiras consoantes',
     descricao: 'M P B L V F C T',
-    jogos: ['caca-letra', 'teia-letras', 'teia-letras'],
+    jogos: ['caca-letra', 'liga-letra', 'letra-que-falta', 'teia-letras'],
     letras: [...CONSOANTES_1],
   },
   {
@@ -172,7 +180,7 @@ export const FASES: Fase[] = [
     numero: '4',
     titulo: 'Palavras',
     descricao: 'VA + CA = VACA',
-    jogos: ['monta-palavra', 'silaba-inicial', 'monta-palavra'],
+    jogos: ['monta-palavra', 'silaba-inicial', 'letra-que-falta', 'monta-palavra'],
     palavras: PALAVRAS_CVCV,
   },
   {
@@ -181,7 +189,7 @@ export const FASES: Fase[] = [
     numero: '1',
     titulo: 'Números até 5',
     descricao: '1 2 3 4 5',
-    jogos: ['conta-teia', 'conta-teia'],
+    jogos: ['conta-teia', 'toque-quantidade', 'depois'],
     faixa: [1, 5],
   },
   {
@@ -190,7 +198,7 @@ export const FASES: Fase[] = [
     numero: '2',
     titulo: 'Números até 10',
     descricao: '6 7 8 9 10',
-    jogos: ['conta-teia', 'conta-teia'],
+    jogos: ['conta-teia', 'toque-quantidade', 'depois'],
     faixa: [0, 10],
   },
   {
@@ -199,12 +207,57 @@ export const FASES: Fase[] = [
     numero: '3',
     titulo: 'Números até 20',
     descricao: '11 até 20',
-    jogos: ['conta-teia', 'conta-teia'],
+    jogos: ['conta-teia', 'depois', 'toque-quantidade'],
     faixa: [10, 20],
+  },
+  {
+    id: 'soma-5',
+    trilha: 'contas',
+    numero: '1',
+    titulo: 'Somar até 5',
+    descricao: '2 + 1 = 3',
+    jogos: ['soma', 'soma', 'soma'],
+    maximo: 5,
+  },
+  {
+    id: 'soma-9',
+    trilha: 'contas',
+    numero: '2',
+    titulo: 'Somar até 9',
+    descricao: '4 + 3 = 7',
+    jogos: ['soma', 'soma', 'soma'],
+    maximo: 9,
+  },
+  {
+    id: 'sub-5',
+    trilha: 'contas',
+    numero: '3',
+    titulo: 'Tirar até 5',
+    descricao: '5 − 2 = 3',
+    jogos: ['subtracao', 'subtracao', 'subtracao'],
+    maximo: 5,
+  },
+  {
+    id: 'sub-9',
+    trilha: 'contas',
+    numero: '4',
+    titulo: 'Tirar até 9',
+    descricao: '8 − 3 = 5',
+    jogos: ['subtracao', 'subtracao', 'subtracao'],
+    maximo: 9,
+  },
+  {
+    id: 'mistura-9',
+    trilha: 'contas',
+    numero: '5',
+    titulo: 'Somar e tirar',
+    descricao: '+ e −',
+    jogos: ['soma', 'subtracao', 'soma'],
+    maximo: 9,
   },
 ];
 
-export const RODADAS_POR_JOGO = 5;
+export const RODADAS_POR_JOGO = 4;
 export const ACERTO_PARA_PASSAR = 0.8;
 
 // Cores de skate que o Davi ganha ao terminar sessões.

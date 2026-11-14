@@ -14,11 +14,13 @@ import {
   type Palavra,
   type TipoJogo,
 } from './data';
+import { escolherPorPeso, type Itens } from './srs';
+import { Depois, LetraQueFalta, LigaLetra, Soma, Subtracao, ToqueQuantidade } from './games2';
 
 export type PropsJogo = {
   fase: Fase;
   rodada: number;
-  revisar: string[];
+  itens: Itens;
   onAcerto: (erros: number, item: string) => void;
   onErro: (item: string) => void;
 };
@@ -30,24 +32,13 @@ export const INFO_JOGOS: Record<TipoJogo, { nome: string; instrucao: string; ico
   'silaba-inicial': { nome: 'Sílaba que Falta', instrucao: 'Qual pedaço completa a palavra?', icone: '✂️' },
   'monta-palavra': { nome: 'Monta-Palavra', instrucao: 'Monte a palavra com as sílabas, na ordem', icone: '🛹' },
   'conta-teia': { nome: 'Conta-Teia', instrucao: 'Conte e toque no número certo', icone: '🔢' },
+  'letra-que-falta': { nome: 'Letra que Falta', instrucao: 'Qual letra completa a palavra?', icone: '🔤' },
+  'liga-letra': { nome: 'Liga-Letra', instrucao: 'Toque numa letra e depois na figura que começa com ela', icone: '🔗' },
+  'toque-quantidade': { nome: 'Acende a Teia', instrucao: 'Acenda a quantidade do número e aperte PRONTO', icone: '💡' },
+  depois: { nome: 'Degraus', instrucao: 'Qual número falta na escada?', icone: '🪜' },
+  soma: { nome: 'Junta-Junta', instrucao: 'Junte os dois grupos e conte tudo', icone: '➕' },
+  subtracao: { nome: 'Vai Embora', instrucao: 'Alguns vão embora. Quantos ficam?', icone: '➖' },
 };
-
-const ultimos: Record<string, string> = {};
-
-// Escolhe o alvo: às vezes repete um item que a criança errou antes (revisão espaçada simples),
-// e evita repetir o mesmo alvo duas rodadas seguidas.
-function escolherAlvo<T>(chaveJogo: string, pool: T[], chave: (x: T) => string, revisar: string[]): T {
-  const ultimo = ultimos[chaveJogo];
-  const deRevisao = pool.filter((x) => revisar.includes(chave(x)) && chave(x) !== ultimo);
-  let escolhido: T;
-  if (deRevisao.length && Math.random() < 0.4) escolhido = sortear(deRevisao);
-  else {
-    const semUltimo = pool.filter((x) => chave(x) !== ultimo);
-    escolhido = sortear(semUltimo.length ? semUltimo : pool);
-  }
-  ultimos[chaveJogo] = chave(escolhido);
-  return escolhido;
-}
 
 function useErros() {
   const [erros, setErros] = useState(0);
@@ -62,10 +53,10 @@ function useErros() {
 
 // ---------------- Caça-Letra ----------------
 
-export function CacaLetra({ fase, revisar, onAcerto, onErro }: PropsJogo) {
+export function CacaLetra({ fase, itens, onAcerto, onErro }: PropsJogo) {
   const letras = fase.letras ?? [...VOGAIS];
   const rodada = useMemo(() => {
-    const alvo = escolherAlvo('caca', letras, (x) => x, revisar);
+    const alvo = escolherPorPeso('caca', letras, (x) => 'letra:' + x, itens);
     const outras = letras.filter((l) => l !== alvo);
     const distratores = Array.from({ length: 5 }, (_, i) => outras[i % outras.length]);
     const celulas = embaralhar([alvo, alvo, alvo, ...embaralhar(distratores)]).map((l, i) => ({ id: i, l }));
@@ -80,10 +71,10 @@ export function CacaLetra({ fase, revisar, onAcerto, onErro }: PropsJogo) {
     if (l === rodada.alvo) {
       const novas = [...pegas, id];
       setPegas(novas);
-      if (novas.length === 3) window.setTimeout(() => onAcerto(erros, rodada.alvo), 250);
+      if (novas.length === 3) window.setTimeout(() => onAcerto(erros, 'letra:' + rodada.alvo), 250);
     } else {
       errar(String(id));
-      onErro(rodada.alvo);
+      onErro('letra:' + rodada.alvo);
     }
   };
 
@@ -117,10 +108,10 @@ export function CacaLetra({ fase, revisar, onAcerto, onErro }: PropsJogo) {
 
 // ---------------- Teia das Letras ----------------
 
-export function TeiaLetras({ fase, revisar, onAcerto, onErro }: PropsJogo) {
+export function TeiaLetras({ fase, itens, onAcerto, onErro }: PropsJogo) {
   const letras = fase.letras ?? [...VOGAIS];
   const rodada = useMemo(() => {
-    const alvo = escolherAlvo('teia', letras, (x) => x, revisar);
+    const alvo = escolherPorPeso('teia', letras, (x) => 'letra:' + x, itens);
     const certa = sortear(INICIAIS[alvo]);
     const outrasLetras = sortearVarios(letras, 2, [alvo]);
     const erradas = outrasLetras.map((l) => sortear(INICIAIS[l]));
@@ -134,10 +125,10 @@ export function TeiaLetras({ fase, revisar, onAcerto, onErro }: PropsJogo) {
     if (feito) return;
     if (p === rodada.certa) {
       setFeito(true);
-      window.setTimeout(() => onAcerto(erros, rodada.alvo), 250);
+      window.setTimeout(() => onAcerto(erros, 'letra:' + rodada.alvo), 250);
     } else {
       errar(p.palavra);
-      onErro(rodada.alvo);
+      onErro('letra:' + rodada.alvo);
     }
   };
 
@@ -167,10 +158,10 @@ export function TeiaLetras({ fase, revisar, onAcerto, onErro }: PropsJogo) {
 
 // ---------------- Junta-Sílaba ----------------
 
-export function JuntaSilaba({ fase, revisar, onAcerto, onErro }: PropsJogo) {
+export function JuntaSilaba({ fase, itens, onAcerto, onErro }: PropsJogo) {
   const silabas = fase.silabas ?? [];
   const rodada = useMemo(() => {
-    const alvo = escolherAlvo('junta', silabas, (x) => x, revisar);
+    const alvo = escolherPorPeso('junta', silabas, (x) => 'silaba:' + x, itens);
     const c = alvo[0];
     const v = alvo[1];
     const consoantes = embaralhar([c, ...sortearVarios(CONSOANTES_1, 2, [c])]);
@@ -187,7 +178,7 @@ export function JuntaSilaba({ fase, revisar, onAcerto, onErro }: PropsJogo) {
     if (l === rodada.c) setSlot1(l);
     else {
       errar('c' + l);
-      onErro(rodada.alvo);
+      onErro('silaba:' + rodada.alvo);
     }
   };
   const tocarV = (l: string) => {
@@ -197,10 +188,10 @@ export function JuntaSilaba({ fase, revisar, onAcerto, onErro }: PropsJogo) {
     }
     if (l === rodada.v) {
       setSlot2(l);
-      window.setTimeout(() => onAcerto(erros, rodada.alvo), 600);
+      window.setTimeout(() => onAcerto(erros, 'silaba:' + rodada.alvo), 600);
     } else {
       errar('v' + l);
-      onErro(rodada.alvo);
+      onErro('silaba:' + rodada.alvo);
     }
   };
 
@@ -248,9 +239,9 @@ export function JuntaSilaba({ fase, revisar, onAcerto, onErro }: PropsJogo) {
 
 // ---------------- Sílaba que Falta ----------------
 
-export function SilabaInicial({ fase, rodada: n, revisar, onAcerto, onErro }: PropsJogo) {
+export function SilabaInicial({ fase, rodada: n, itens, onAcerto, onErro }: PropsJogo) {
   const rodada = useMemo(() => {
-    const palavra = escolherAlvo('sil-ini', PALAVRAS_CVCV, (p) => p.palavra, revisar);
+    const palavra = escolherPorPeso('sil-ini', PALAVRAS_CVCV, (p) => 'palavra:' + p.palavra, itens);
     // fase 3: sempre falta a primeira sílaba; fase 4: pode faltar qualquer uma
     const falta = fase.id === 'palavras' && Math.random() < 0.5 ? palavra.silabas.length - 1 : 0;
     const certa = palavra.silabas[falta];
@@ -269,10 +260,10 @@ export function SilabaInicial({ fase, rodada: n, revisar, onAcerto, onErro }: Pr
     if (feito) return;
     if (s === rodada.certa) {
       setFeito(true);
-      window.setTimeout(() => onAcerto(erros, rodada.palavra.palavra), 600);
+      window.setTimeout(() => onAcerto(erros, 'palavra:' + rodada.palavra.palavra), 600);
     } else {
       errar(s);
-      onErro(rodada.palavra.palavra);
+      onErro('palavra:' + rodada.palavra.palavra);
     }
   };
 
@@ -310,10 +301,10 @@ export function SilabaInicial({ fase, rodada: n, revisar, onAcerto, onErro }: Pr
 
 // ---------------- Monta-Palavra ----------------
 
-export function MontaPalavra({ fase, rodada: n, revisar, onAcerto, onErro }: PropsJogo) {
+export function MontaPalavra({ fase, rodada: n, itens, onAcerto, onErro }: PropsJogo) {
   const palavras = fase.palavras ?? PALAVRAS_CVCV;
   const rodada = useMemo(() => {
-    const palavra = escolherAlvo('monta', palavras, (p) => p.palavra, revisar);
+    const palavra = escolherPorPeso('monta', palavras, (p) => 'palavra:' + p.palavra, itens);
     const pool = Array.from(new Set(palavras.flatMap((p) => p.silabas)));
     const extra = sortearVarios(pool, 1, palavra.silabas);
     const pecas = embaralhar([...palavra.silabas, ...extra]).map((s, i) => ({ id: i, s }));
@@ -332,11 +323,11 @@ export function MontaPalavra({ fase, rodada: n, revisar, onAcerto, onErro }: Pro
       const novas = [...usadas, id];
       setUsadas(novas);
       if (novas.length === rodada.palavra.silabas.length) {
-        window.setTimeout(() => onAcerto(erros, rodada.palavra.palavra), 700);
+        window.setTimeout(() => onAcerto(erros, 'palavra:' + rodada.palavra.palavra), 700);
       }
     } else {
       errar(String(id));
-      onErro(rodada.palavra.palavra);
+      onErro('palavra:' + rodada.palavra.palavra);
     }
   };
 
@@ -374,11 +365,11 @@ export function MontaPalavra({ fase, rodada: n, revisar, onAcerto, onErro }: Pro
 
 // ---------------- Conta-Teia ----------------
 
-export function ContaTeia({ fase, revisar, onAcerto, onErro }: PropsJogo) {
+export function ContaTeia({ fase, itens, onAcerto, onErro }: PropsJogo) {
   const [min, max] = fase.faixa ?? [1, 5];
   const rodada = useMemo(() => {
     const numeros = Array.from({ length: max - min + 1 }, (_, i) => min + i);
-    const n = escolherAlvo('conta', numeros, String, revisar);
+    const n = escolherPorPeso('conta', numeros, (x) => 'num:' + x, itens);
     const perto = numeros.filter((x) => x !== n && Math.abs(x - n) <= 3);
     const erradas = sortearVarios(perto.length >= 2 ? perto : numeros, 2, [n]);
     return { n, objeto: sortear(OBJETOS_CONTAGEM), opcoes: embaralhar([n, ...erradas]) };
@@ -399,10 +390,10 @@ export function ContaTeia({ fase, revisar, onAcerto, onErro }: PropsJogo) {
     if (feito) return;
     if (x === rodada.n) {
       setFeito(true);
-      window.setTimeout(() => onAcerto(erros, String(rodada.n)), 600);
+      window.setTimeout(() => onAcerto(erros, 'num:' + rodada.n), 600);
     } else {
       errar(String(x));
-      onErro(String(rodada.n));
+      onErro('num:' + rodada.n);
     }
   };
 
@@ -453,4 +444,10 @@ export const JOGOS: Record<TipoJogo, (p: PropsJogo) => React.JSX.Element> = {
   'silaba-inicial': SilabaInicial,
   'monta-palavra': MontaPalavra,
   'conta-teia': ContaTeia,
+  'letra-que-falta': LetraQueFalta,
+  'liga-letra': LigaLetra,
+  'toque-quantidade': ToqueQuantidade,
+  depois: Depois,
+  soma: Soma,
+  subtracao: Subtracao,
 };

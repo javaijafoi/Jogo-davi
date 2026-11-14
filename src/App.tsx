@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ACERTO_PARA_PASSAR, CORES_SKATE, FASES, RODADAS_POR_JOGO, type Fase } from './data';
 import { Davi } from './Davi';
 import { INFO_JOGOS, JOGOS } from './games';
-import { carregar, estrelasPara, progressoInicial, proximaFase, salvar, type Progresso } from './storage';
+import { carregar, estrelasPara, mesclarPadrao, progressoInicial, proximaFase, salvar, type Progresso } from './storage';
 import { IconeTeia, Teia } from './Teia';
-import { codigoDoAparelho, enviarSessao, esvaziarFila, normalizarCodigo, servidor, trocarCodigo } from './sync';
+import { codigoDoNumero, entrarComNumero, enviarSessao, esvaziarFila, guardarNumero, numeroSalvo, servidor, esquecerNumero } from './sync';
+import { nomeItem, registrarAcerto, registrarErro, TIPOS_ITEM } from './srs';
 
 type EstadoNuvem = '...' | 'ok' | 'offline';
 
@@ -21,7 +22,8 @@ const ELOGIOS = ['BOA!', 'ISSO AÍ!', 'MANDOU BEM!', 'DEMAIS!', 'ARRASOU!', 'SHO
 export default function App() {
   const [tela, setTela] = useState<Tela>({ nome: 'inicio' });
   const [prog, setProg] = useState<Progresso>(() => carregar());
-  const [codigo, setCodigo] = useState(() => codigoDoAparelho());
+  const [numero, setNumero] = useState<string | null>(() => numeroSalvo());
+  const codigo = numero ? codigoDoNumero(numero) : null;
   const [nuvem, setNuvem] = useState<EstadoNuvem>('...');
   // Toda mudança feita pelo jogo marca a hora, para saber qual cópia é a mais nova.
   const atualizar = (fn: (p: Progresso) => Progresso) => setProg((p) => ({ ...fn(p), atualizadoEm: Date.now() }));
@@ -30,13 +32,14 @@ export default function App() {
 
   // Ao abrir: busca a cópia do servidor e fica com a mais nova.
   useEffect(() => {
+    if (!codigo) return;
     let vivo = true;
     servidor
       .carregar(codigo)
       .then((remoto) => {
         if (!vivo) return;
         if (remoto && (remoto.atualizadoEm ?? 0) > (carregar().atualizadoEm ?? 0)) {
-          setProg({ ...progressoInicial(), ...remoto });
+          setProg(mesclarPadrao(remoto));
         }
         setNuvem('ok');
       })
@@ -49,7 +52,7 @@ export default function App() {
 
   // Envia para o servidor 1,5 s depois da última mudança.
   useEffect(() => {
-    if (!prog.atualizadoEm) return;
+    if (!prog.atualizadoEm || !codigo) return;
     const t = window.setTimeout(() => {
       servidor
         .salvar(codigo, prog)
@@ -58,6 +61,26 @@ export default function App() {
     }, 1500);
     return () => window.clearTimeout(t);
   }, [prog, codigo]);
+
+  if (!numero || !codigo) {
+    return (
+      <div className="app">
+        <Teia className="teia-canto tl" tamanho={150} />
+        <Teia className="teia-canto br" tamanho={150} />
+        <Entrada
+          onEntrar={async (num) => {
+            const r = await entrarComNumero(num, prog);
+            const pr = mesclarPadrao(r.progresso);
+            setProg(pr);
+            salvar(pr);
+            guardarNumero(num);
+            setNumero(num);
+            return r;
+          }}
+        />
+      </div>
+    );
+  }
   const corSkate = CORES_SKATE.find((c) => c.id === prog.corSkate)?.cor ?? '#7b3fe4';
 
   return (
@@ -84,17 +107,11 @@ export default function App() {
           prog={prog}
           corSkate={corSkate}
           onSair={() => setTela({ nome: 'mapa' })}
-          onErroItem={(item) =>
-            atualizar((p) => ({ ...p, errosPorItem: { ...p.errosPorItem, [item]: (p.errosPorItem[item] ?? 0) + 1 } }))
-          }
+          onErroItem={(item) => atualizar((p) => ({ ...p, itens: registrarErro(p.itens, item) }))}
           onAcertoItem={(item, erros) =>
-            atualizar((p) => {
-              const atual = p.errosPorItem[item] ?? 0;
-              const novo = erros === 0 ? Math.max(0, atual - 1) : atual;
-              return { ...p, teias: p.teias + 1, errosPorItem: { ...p.errosPorItem, [item]: novo } };
-            })
+            atualizar((p) => ({ ...p, teias: p.teias + 1, itens: registrarAcerto(p.itens, item, erros) }))
           }
-          onFim={(acertos, total) => {
+          onFim={(acertos, total, errosItens) => {
             const faseId = tela.faseId;
             const taxa = acertos / total;
             const p = prog;
@@ -103,7 +120,7 @@ export default function App() {
             const passou = taxa >= ACERTO_PARA_PASSAR;
             const liberadas = passou && prox && !p.liberadas.includes(prox) ? [...p.liberadas, prox] : p.liberadas;
             const proxCor = CORES_SKATE.find((c) => !p.coresGanhas.includes(c.id));
-            enviarSessao(codigo, { fase: faseId, acertos, total });
+            enviarSessao(codigo, { fase: faseId, acertos, total, erros: errosItens });
             atualizar((cur) => ({
               ...cur,
               sessoes: cur.sessoes + 1,
@@ -148,14 +165,15 @@ export default function App() {
           prog={prog}
           atualizar={atualizar}
           codigo={codigo}
+          numero={numero}
           nuvem={nuvem}
-          onTrocarCodigo={async (novo) => {
-            const remoto = await servidor.carregar(novo);
-            if (!remoto) return false;
-            trocarCodigo(novo);
-            setProg({ ...progressoInicial(), ...remoto });
-            setCodigo(novo);
-            return true;
+          onTrocarJogador={() => {
+            esquecerNumero();
+            // o próximo jogador começa do zero neste aparelho (o progresso do Davi está salvo no servidor)
+            setProg(progressoInicial());
+            salvar(progressoInicial());
+            setNumero(null);
+            setTela({ nome: 'inicio' });
           }}
           onVoltar={() => setTela({ nome: 'mapa' })}
         />
@@ -201,6 +219,7 @@ function Mapa(props: {
   const { prog, onFase } = props;
   const letras = FASES.filter((f) => f.trilha === 'letras');
   const numeros = FASES.filter((f) => f.trilha === 'numeros');
+  const contas = FASES.filter((f) => f.trilha === 'contas');
   // Fase atual = a última liberada da trilha de letras
   const atual = [...letras].reverse().find((f) => prog.liberadas.includes(f.id));
 
@@ -258,6 +277,12 @@ function Mapa(props: {
           </div>
         ))}
       </div>
+      <h2 className="secao laranja">CONTAS</h2>
+      <div className="cidade">
+        {contas.map((f) => (
+          <Predio key={f.id} f={f} />
+        ))}
+      </div>
       <h2 className="secao azul">NÚMEROS</h2>
       <div className="cidade">
         {numeros.map((f) => (
@@ -280,7 +305,7 @@ function Sessao(props: {
   prog: Progresso;
   corSkate: string;
   onSair: () => void;
-  onFim: (acertos: number, total: number) => void;
+  onFim: (acertos: number, total: number, errosItens: string[]) => void;
   onErroItem: (item: string) => void;
   onAcertoItem: (item: string, erros: number) => void;
 }) {
@@ -297,12 +322,7 @@ function Sessao(props: {
   const tipo = fase.jogos[jogoIdx];
   const Jogo = JOGOS[tipo];
   const info = INFO_JOGOS[tipo];
-  const revisar = useMemo(
-    () => Object.entries(props.prog.errosPorItem).filter(([, n]) => n > 0).map(([k]) => k),
-    // revisão calculada no início da sessão
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
+  const errosSessao = useRef<Set<string>>(new Set());
 
   // Mostra o nome do mini-jogo por um instante sempre que ele muda
   useEffect(() => {
@@ -322,7 +342,7 @@ function Sessao(props: {
       if (passo + 1 >= total) {
         if (!fim.current) {
           fim.current = true;
-          props.onFim(novoAcertos, total);
+          props.onFim(novoAcertos, total, [...errosSessao.current]);
         }
       } else setPasso((p) => p + 1);
     }, 1100);
@@ -355,9 +375,12 @@ function Sessao(props: {
             key={passo}
             fase={fase}
             rodada={rodada}
-            revisar={revisar}
+            itens={props.prog.itens}
             onAcerto={acertou}
-            onErro={props.onErroItem}
+            onErro={(item) => {
+              errosSessao.current.add(item);
+              props.onErroItem(item);
+            }}
           />
         )}
       </div>
@@ -488,42 +511,52 @@ function Garagem({ prog, onEscolher, onVoltar }: { prog: Progresso; onEscolher: 
 
 // ---------------- Área do adulto ----------------
 
+type Sessao = { fase: string; acertos: number; total: number; feita_em: string; erros?: string[] };
+
 function Adulto({
   prog,
   atualizar,
+  numero,
   codigo,
   nuvem,
-  onTrocarCodigo,
+  onTrocarJogador,
   onVoltar,
 }: {
   prog: Progresso;
   atualizar: (fn: (p: Progresso) => Progresso) => void;
+  numero: string;
   codigo: string;
   nuvem: EstadoNuvem;
-  onTrocarCodigo: (novo: string) => Promise<boolean>;
+  onTrocarJogador: () => void;
   onVoltar: () => void;
 }) {
-  const [historico, setHistorico] = useState<{ fase: string; acertos: number; total: number; feita_em: string }[] | null>(null);
-  const [outroCodigo, setOutroCodigo] = useState('');
-  const [msgCodigo, setMsgCodigo] = useState('');
-  const [conta] = useState(() => {
-    const a = 3 + Math.floor(Math.random() * 6);
-    const b = 3 + Math.floor(Math.random() * 6);
-    return { a, b };
-  });
+  const [conta] = useState(() => ({ a: 3 + Math.floor(Math.random() * 6), b: 3 + Math.floor(Math.random() * 6) }));
   const [resp, setResp] = useState('');
   const [ok, setOk] = useState(false);
   const [confirmarZerar, setConfirmarZerar] = useState(false);
+  const [historico, setHistorico] = useState<Sessao[] | null>(null);
+
+  useEffect(() => {
+    if (!ok) return;
+    servidor
+      .historico(codigo)
+      .then(setHistorico)
+      .catch(() => setHistorico([]));
+  }, [ok, codigo]);
+
+  const cabecalho = (
+    <header className="barra">
+      <button className="botao-icone" onClick={onVoltar} aria-label="Voltar">
+        ◀
+      </button>
+      <h2 className="secao">ÁREA DO ADULTO</h2>
+    </header>
+  );
 
   if (!ok) {
     return (
       <main className="tela adulto">
-        <header className="barra">
-          <button className="botao-icone" onClick={onVoltar} aria-label="Voltar">
-            ◀
-          </button>
-          <h2 className="secao">ÁREA DO ADULTO</h2>
-        </header>
+        {cabecalho}
         <p className="texto-claro">
           Para entrar, quanto é {conta.a} × {conta.b}?
         </p>
@@ -542,27 +575,133 @@ function Adulto({
     );
   }
 
-  const errosTop = Object.entries(prog.errosPorItem)
-    .filter(([, n]) => n > 0)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10);
+  // Relatório por tipo de item
+  const grupos = Object.keys(TIPOS_ITEM).map((tipo) => {
+    const lista = Object.entries(prog.itens).filter(([k]) => k.startsWith(tipo + ':'));
+    const dificil = lista
+      .filter(([, s]) => s.erros > 0 && s.caixa <= 1)
+      .sort((a, b) => b[1].erros - a[1].erros);
+    const domina = lista.filter(([, s]) => s.caixa >= 3).sort((a, b) => b[1].acertos - a[1].acertos);
+    const vistos = lista.length;
+    return { tipo, nome: TIPOS_ITEM[tipo], dificil, domina, vistos };
+  });
+
+  const ultimas = (historico ?? []).slice(0, 20).reverse();
 
   return (
     <main className="tela adulto">
-      <header className="barra">
-        <button className="botao-icone" onClick={onVoltar} aria-label="Voltar">
-          ◀
-        </button>
-        <h2 className="secao">ÁREA DO ADULTO</h2>
-      </header>
+      {cabecalho}
+
       <section className="painel">
-        <h3>Progresso</h3>
+        <h3>Jogador {numero}</h3>
+        <p className="nota">
+          {nuvem === 'ok'
+            ? '✅ Progresso salvo no servidor. Em qualquer celular ou tablet, é só abrir o jogo e digitar ' + numero + '.'
+            : nuvem === 'offline'
+              ? '⚠️ Sem conexão agora: salvo neste aparelho e enviado quando a internet voltar.'
+              : 'Verificando…'}
+        </p>
+        <button className="botao-medio" onClick={onTrocarJogador}>
+          Trocar de jogador
+        </button>
+      </section>
+
+      <section className="painel">
+        <h3>Onde ele precisa de ajuda</h3>
+        <p className="nota">
+          Itens que ele errou e ainda não acertou de primeira. Eles aparecem mais vezes no jogo, misturados com os outros.
+        </p>
+        {grupos.every((g) => g.dificil.length === 0) && <p className="nota">Nada por enquanto. 🎉</p>}
+        {grupos
+          .filter((g) => g.dificil.length > 0)
+          .map((g) => (
+            <div key={g.tipo} className="relatorio-linha">
+              <b>{g.nome}</b>
+              <div className="chips">
+                {g.dificil.map(([k, s]) => (
+                  <span key={k} className="chip dificil">
+                    {nomeItem(k)} <small>errou {s.erros}×</small>
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+      </section>
+
+      <section className="painel">
+        <h3>O que ele já domina</h3>
+        <p className="nota">Acertou de primeira 3 vezes seguidas ou mais. Esses aparecem menos.</p>
+        {grupos.every((g) => g.domina.length === 0) && <p className="nota">Ainda nada. Continue jogando!</p>}
+        {grupos
+          .filter((g) => g.domina.length > 0)
+          .map((g) => (
+            <div key={g.tipo} className="relatorio-linha">
+              <b>{g.nome}</b>
+              <div className="chips">
+                {g.domina.map(([k]) => (
+                  <span key={k} className="chip domina">
+                    {nomeItem(k)}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+      </section>
+
+      <section className="painel">
+        <h3>Evolução</h3>
+        {historico === null ? (
+          <p className="nota">Carregando…</p>
+        ) : historico.length === 0 ? (
+          <p className="nota">Nenhuma sessão salva no servidor ainda (ou sem internet).</p>
+        ) : (
+          <>
+            <div className="grafico" aria-label="Acerto de primeira nas últimas sessões">
+              {ultimas.map((h, i) => {
+                const pct = Math.round((h.acertos / h.total) * 100);
+                return (
+                  <div key={i} className="barra-col" title={`${pct}%`}>
+                    <span className="barra-val">{pct}</span>
+                    <span className={`barra-fill ${pct >= 80 ? 'boa' : pct >= 50 ? 'media' : 'baixa'}`} style={{ height: `${Math.max(4, pct)}%` }} />
+                  </div>
+                );
+              })}
+            </div>
+            <p className="nota">Acerto de primeira (%) nas últimas {ultimas.length} sessões, da mais antiga à mais nova.</p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Quando</th>
+                  <th>Fase</th>
+                  <th>Acerto</th>
+                  <th>Errou</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historico.slice(0, 40).map((h, i) => (
+                  <tr key={i}>
+                    <td>
+                      {new Date(h.feita_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                    <td>{FASES.find((f) => f.id === h.fase)?.titulo ?? h.fase}</td>
+                    <td>{Math.round((h.acertos / h.total) * 100)}%</td>
+                    <td className="errou">{(h.erros ?? []).map(nomeItem).join(', ') || '–'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+      </section>
+
+      <section className="painel">
+        <h3>Fases</h3>
         <table>
           <thead>
             <tr>
               <th>Fase</th>
               <th>Vezes</th>
-              <th>Melhor acerto</th>
+              <th>Melhor</th>
               <th>Liberada</th>
             </tr>
           </thead>
@@ -581,9 +720,7 @@ function Adulto({
                       onChange={(e) =>
                         atualizar((p) => ({
                           ...p,
-                          liberadas: e.target.checked
-                            ? [...p.liberadas, f.id]
-                            : p.liberadas.filter((x) => x !== f.id),
+                          liberadas: e.target.checked ? [...p.liberadas, f.id] : p.liberadas.filter((x) => x !== f.id),
                         }))
                       }
                     />
@@ -595,91 +732,16 @@ function Adulto({
         </table>
         <p className="nota">Passa de fase com 80% de acerto de primeira. Sessões feitas: {prog.sessoes}.</p>
       </section>
-      <section className="painel">
-        <h3>Evolução</h3>
-        {historico === null ? (
-          <button
-            className="botao-medio"
-            onClick={() =>
-              servidor
-                .historico(codigo)
-                .then(setHistorico)
-                .catch(() => setHistorico([]))
-            }
-          >
-            Ver sessões salvas
-          </button>
-        ) : historico.length === 0 ? (
-          <p className="nota">Nenhuma sessão salva no servidor ainda (ou sem internet).</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Dia</th>
-                <th>Fase</th>
-                <th>Acerto</th>
-              </tr>
-            </thead>
-            <tbody>
-              {historico.slice(0, 50).map((h, i) => (
-                <tr key={i}>
-                  <td>{new Date(h.feita_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
-                  <td>{FASES.find((f) => f.id === h.fase)?.titulo ?? h.fase}</td>
-                  <td>{Math.round((h.acertos / h.total) * 100)}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-      <section className="painel">
-        <h3>Onde ele mais erra</h3>
-        {errosTop.length === 0 ? (
-          <p className="nota">Nada ainda.</p>
-        ) : (
-          <div className="chips">
-            {errosTop.map(([k, n]) => (
-              <span key={k} className="chip">
-                {k} <small>×{n}</small>
-              </span>
-            ))}
-          </div>
-        )}
-        <p className="nota">Esses itens voltam com mais frequência nas próximas sessões.</p>
-      </section>
-      <section className="painel">
-        <h3>Cópia no servidor</h3>
-        <p className="nota">
-          {nuvem === 'ok' ? '✅ Progresso salvo no servidor.' : nuvem === 'offline' ? '⚠️ Sem conexão: salvo só neste aparelho por enquanto.' : 'Verificando…'}
-        </p>
-        <p className="nota">
-          Código do jogador: <b className="codigo">{codigo}</b>
-        </p>
-        <p className="nota">Anote este código. Em outro celular ou tablet, digite-o abaixo para continuar de onde parou.</p>
-        <form
-          className="porta"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            const c = normalizarCodigo(outroCodigo);
-            if (c.length < 8) return setMsgCodigo('Código incompleto.');
-            setMsgCodigo('Buscando…');
-            const ok = await onTrocarCodigo(c).catch(() => false);
-            setMsgCodigo(ok ? 'Pronto! Progresso recuperado.' : 'Não achei esse código.');
-          }}
-        >
-          <input className="campo-codigo" placeholder="XXXXX-XXXXX" value={outroCodigo} onChange={(e) => setOutroCodigo(e.target.value)} />
-          <button className="botao-medio">Usar</button>
-        </form>
-        {msgCodigo && <p className="nota">{msgCodigo}</p>}
-      </section>
+
       <section className="painel">
         <h3>Como usar</h3>
         <ul className="nota">
           <li>Sessões curtas: uma fase por vez, cerca de 10 minutos, de preferência todo dia.</li>
-          <li>No começo, sente junto e leia em voz alta a letra, a sílaba e o nome das figuras.</li>
+          <li>No começo, sente junto e leia em voz alta a letra, a sílaba, o nome das figuras e as contas.</li>
           <li>Depois ele pode repetir sozinho as fases que já conhece.</li>
         </ul>
       </section>
+
       <section className="painel">
         {confirmarZerar ? (
           <div className="botoes">
@@ -703,6 +765,58 @@ function Adulto({
           </button>
         )}
       </section>
+    </main>
+  );
+}
+
+// ---------------- Entrada com número ----------------
+
+function Entrada({ onEntrar }: { onEntrar: (num: string) => Promise<{ novo: boolean }> }) {
+  const [num, setNum] = useState('');
+  const [estado, setEstado] = useState<'' | 'buscando' | 'erro'>('');
+  const tecla = (d: string) => setNum((n) => (n.length < 4 ? n + d : n));
+  const entrar = async () => {
+    if (num.length !== 4) return;
+    setEstado('buscando');
+    try {
+      await onEntrar(num);
+    } catch {
+      setEstado('erro');
+    }
+  };
+  return (
+    <main className="tela entrada">
+      <h1 className="titulo">
+        <span className="t1">JOGO DO</span>
+        <span className="t2 menor">DAVI</span>
+      </h1>
+      <Davi tamanho={90} />
+      <p className="texto-claro">Qual é o seu número?</p>
+      <div className="caixas-numero">
+        {[0, 1, 2, 3].map((i) => (
+          <span key={i} className={i === num.length ? 'ativa' : ''}>
+            {num[i] ?? ''}
+          </span>
+        ))}
+      </div>
+      <div className="teclado">
+        {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
+          <button key={d} className="tecla" onClick={() => tecla(d)}>
+            {d}
+          </button>
+        ))}
+        <button className="tecla apagar" onClick={() => setNum((n) => n.slice(0, -1))} aria-label="Apagar">
+          ⌫
+        </button>
+        <button className="tecla" onClick={() => tecla('0')}>
+          0
+        </button>
+        <button className="tecla ok" onClick={entrar} disabled={num.length !== 4 || estado === 'buscando'} aria-label="Entrar">
+          ✓
+        </button>
+      </div>
+      {estado === 'buscando' && <p className="nota">Entrando…</p>}
+      {estado === 'erro' && <p className="nota">Não consegui conectar. Tente de novo.</p>}
     </main>
   );
 }

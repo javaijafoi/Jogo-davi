@@ -320,3 +320,82 @@ button:disabled { cursor: default; }
 .confirmar p { font-size: 30px; font-weight: 700; margin: 0 0 16px; }
 .codigo { font-size: 22px; letter-spacing: 2px; color: #fff; font-family: ui-monospace, monospace; }
 .campo-codigo { width: 200px !important; font-size: 20px !important; text-transform: uppercase; }
+
+/* ---------- Trilha de contas (mesma identidade: prédios, teias, HQ) ---------- */
+.secao.laranja { color: #ff9a3c; }
+.predio.contas { background: repeating-linear-gradient(0deg, transparent 0 22px, rgba(255,255,255,.08) 22px 24px), linear-gradient(#ff8a1f, #c85a07); }
+
+/* Liga-Letra */
+.carta.selecionada { background: var(--azul); color: #fff; border-color: var(--azul-escuro); box-shadow: 0 4px 0 var(--azul-escuro); transform: translateY(-4px); }
+.seta-liga { font-size: 30px; line-height: 1; }
+
+/* Letra que falta */
+.slot.letra-slot { min-width: 56px; height: 70px; font-size: 42px; padding: 0 6px; }
+
+/* Acende a Teia */
+.numero-alvo { color: var(--azul-escuro); }
+.obj.apagado { background: #f1f3f8; box-shadow: inset 0 0 0 2px #dfe3ec; }
+.obj.pulsa-obj { animation: pulsa 0.9s infinite; }
+.botao-grande.ok { background: var(--verde); }
+.botao-grande.treme { animation: treme 0.4s; }
+
+/* Degraus */
+.trilha-numeros { display: flex; align-items: flex-end; gap: 10px; }
+.pedra { width: 84px; height: 84px; display: grid; place-items: center; font-size: 46px; font-weight: 700; background: #fff; border: 3px solid #d5dbe8; border-radius: 16px; color: var(--azul-escuro); }
+.pedra:nth-child(2) { margin-bottom: 18px; }
+.pedra:nth-child(3) { margin-bottom: 36px; }
+.pedra.ativo { border: 4px dashed var(--azul); background: #eef4ff; color: var(--vermelho); animation: respira 1.4s infinite; }
+.pedra.cheio { border-color: var(--verde); background: #dff5e4; animation: aparece .25s; }
+
+/* Contas */
+.expressao { display: flex; align-items: center; gap: 10px; font-size: 56px; font-weight: 700; }
+.expressao .num-a { color: var(--vermelho); }
+.expressao .num-b { color: var(--azul); }
+.expressao .op { color: #8a93a6; }
+.expressao .resp { min-width: 70px; height: 76px; display: grid; place-items: center; border: 4px dashed var(--azul); border-radius: 16px; color: var(--vermelho); }
+.expressao .resp.cheio { border-style: solid; border-color: var(--verde); background: #dff5e4; animation: aparece .25s; }
+.grupos { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; transition: gap .5s; }
+.grupo { display: flex; flex-wrap: wrap; justify-content: center; max-width: 168px; gap: 4px; padding: 6px; border-radius: 14px; border: 3px solid; transition: border-color .4s, background .4s; }
+.grupo.a { border-color: #f5b5b5; background: #fff5f5; }
+.grupo.b { border-color: #b5ccf5; background: #f3f7ff; }
+.grupos.juntos { gap: 0; }
+.grupos.juntos .grupo-mais { width: 0; opacity: 0; overflow: hidden; }
+.grupos.juntos .grupo { border-color: var(--verde); background: #effaf1; }
+.grupo-mais { font-size: 40px; font-weight: 700; color: #8a93a6; transition: all .5s; }
+.obj.sai { position: relative; opacity: .45; }
+.obj.sai::after { content: ''; position: absolute; inset: 6px; background: linear-gradient(45deg, transparent 45%, var(--vermelho) 45% 55%, transparent 55%); }
+.obj.sai.foi { animation: voa .7s forwards; }
+@keyframes voa { to { transform: translate(30px, -60px) rotate(25deg); opacity: 0; } }
+
+/* Entrada com número */
+.entrada { justify-content: center; gap: 14px; }
+.titulo .t2.menor { font-size: clamp(54px, 15vw, 90px); }
+.caixas-numero { display: flex; gap: 10px; }
+.caixas-numero span { width: 60px; height: 72px; display: grid; place-items: center; font-size: 44px; font-weight: 700; background: var(--papel); color: var(--tinta); border-radius: 14px; box-shadow: var(--sombra); }
+.caixas-numero span.ativa { outline: 4px solid var(--amarelo); }
+.teclado { display: grid; grid-template-columns: repeat(3, 76px); gap: 10px; }
+.tecla { height: 64px; border-radius: 16px; background: #fff; color: var(--tinta); font-size: 32px; font-weight: 700; box-shadow: var(--sombra); }
+.tecla:active { transform: translateY(3px); }
+.tecla.apagar { background: rgba(255,255,255,.2); color: #fff; }
+.tecla.ok { background: var(--vermelho); color: #fff; }
+.tecla.ok:disabled { opacity: .4; }
+
+/* Relatório */
+.relatorio-linha { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.chip.dificil { background: #ffe1e1; color: var(--vermelho-escuro); }
+.chip.domina { background: #dff5e4; color: #1d6b31; }
+.chip small { font-weight: 400; opacity: .8; }
+.grafico { display: flex; align-items: flex-end; gap: 4px; height: 120px; margin-top: 8px; padding-top: 16px; border-bottom: 2px solid rgba(255,255,255,.2); }
+.barra-col { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; position: relative; }
+.barra-val { font-size: 10px; color: #cfe0ff; }
+.barra-fill { width: 100%; max-width: 22px; border-radius: 4px 4px 0 0; }
+.barra-fill.boa { background: var(--verde); }
+.barra-fill.media { background: var(--amarelo); }
+.barra-fill.baixa { background: var(--vermelho); }
+.painel td.errou { font-size: 13px; color: #ffb3b3; }
+
+@media (max-width: 420px) {
+  .expressao { font-size: 44px; gap: 6px; }
+  .pedra { width: 70px; height: 70px; font-size: 38px; }
+  .slot.letra-slot { min-width: 46px; height: 60px; font-size: 34px; }
+}
