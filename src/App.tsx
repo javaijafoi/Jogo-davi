@@ -32,10 +32,12 @@ export default function App() {
   useEffect(() => salvar(prog), [prog]);
 
   // Token recusado pelo servidor (ex.: saiu em outro lugar): volta para a tela de entrada.
-  const tokenRecusado = (e: unknown) => {
+  // Só desconecta se o token recusado ainda for o desta conta (pedidos antigos podem chegar atrasados).
+  const tokenRecusado = (tok: string) => (e: unknown) => {
     if (!(e instanceof TokenInvalido)) return false;
+    if (entradaSalva()?.token !== tok) return true;
     esquecerEntrada();
-    setConta(null);
+    setConta((c) => (c?.token === tok ? null : c));
     return true;
   };
 
@@ -52,8 +54,8 @@ export default function App() {
         }
         setNuvem('ok');
       })
-      .catch((e) => vivo && !tokenRecusado(e) && setNuvem('offline'));
-    esvaziarFila(token).catch(tokenRecusado);
+      .catch((e) => vivo && !tokenRecusado(token)(e) && setNuvem('offline'));
+    esvaziarFila(token).catch(tokenRecusado(token));
     return () => {
       vivo = false;
     };
@@ -66,7 +68,7 @@ export default function App() {
       servidor
         .salvar(token, prog)
         .then(() => setNuvem('ok'))
-        .catch((e) => !tokenRecusado(e) && setNuvem('offline'));
+        .catch((e) => !tokenRecusado(token)(e) && setNuvem('offline'));
     }, 1500);
     return () => window.clearTimeout(t);
   }, [prog, token]);
@@ -130,7 +132,7 @@ export default function App() {
             const passou = taxa >= ACERTO_PARA_PASSAR;
             const liberadas = passou && prox && !p.liberadas.includes(prox) ? [...p.liberadas, prox] : p.liberadas;
             const proxCor = CORES_SKATE.find((c) => !p.coresGanhas.includes(c.id));
-            enviarSessao(token, { fase: faseId, acertos, total, erros: errosItens }).catch(tokenRecusado);
+            enviarSessao(token, { fase: faseId, acertos, total, erros: errosItens }).catch(tokenRecusado(token));
             atualizar((cur) => ({
               ...cur,
               sessoes: cur.sessoes + 1,
@@ -784,7 +786,7 @@ function Adulto({
 const MSG_ERRO: Record<ErroEntrada, string> = {
   nao_existe: '',
   nome_errado: 'Esse nome não confere com o deste número. Peça ajuda a um adulto.',
-  bloqueado: 'Muitas tentativas erradas. Espere 15 minutos e tente de novo.',
+  bloqueado: 'Esse número está bloqueado agora. Tente de novo mais tarde ou peça ajuda a um adulto.',
   muitas_tentativas: 'Muitas tentativas agora. Espere alguns minutos e tente de novo.',
   dados_invalidos: 'Digite o primeiro nome da mãe.',
   sem_internet: 'Não consegui conectar. Tente de novo.',
