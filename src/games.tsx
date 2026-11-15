@@ -1,5 +1,5 @@
 // Mini-jogos. Cada componente mostra UMA rodada e chama onAcerto(erros) quando a criança resolve.
-// Regras para TDAH: uma tarefa por tela, poucas opções, erro sem punição, dica depois de 2 erros.
+// Regras de foco: uma tarefa por tela, poucas opções, erro sem punição, dica depois de 2 erros.
 import { useMemo, useState } from 'react';
 import {
   CONSOANTES_1,

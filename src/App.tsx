@@ -4,7 +4,7 @@ import { Davi } from './Davi';
 import { INFO_JOGOS, JOGOS } from './games';
 import { carregar, estrelasPara, mesclarPadrao, progressoInicial, proximaFase, salvar, type Progresso } from './storage';
 import { IconeTeia, Teia } from './Teia';
-import { codigoDoNumero, entrarComNumero, enviarSessao, esvaziarFila, guardarNumero, numeroSalvo, servidor, esquecerNumero } from './sync';
+import { entradaSalva, entrar, enviarSessao, esquecerEntrada, esvaziarFila, servidor, TokenInvalido, type Entrada as DadosEntrada, type ErroEntrada, type ResultadoEntrada } from './sync';
 import { nomeItem, registrarAcerto, registrarErro, TIPOS_ITEM } from './srs';
 
 type EstadoNuvem = '...' | 'ok' | 'offline';
@@ -22,20 +22,29 @@ const ELOGIOS = ['BOA!', 'ISSO AÍ!', 'MANDOU BEM!', 'DEMAIS!', 'ARRASOU!', 'SHO
 export default function App() {
   const [tela, setTela] = useState<Tela>({ nome: 'inicio' });
   const [prog, setProg] = useState<Progresso>(() => carregar());
-  const [numero, setNumero] = useState<string | null>(() => numeroSalvo());
-  const codigo = numero ? codigoDoNumero(numero) : null;
+  const [conta, setConta] = useState<DadosEntrada | null>(() => entradaSalva());
+  const numero = conta?.numero ?? null;
+  const token = conta?.token ?? null;
   const [nuvem, setNuvem] = useState<EstadoNuvem>('...');
   // Toda mudança feita pelo jogo marca a hora, para saber qual cópia é a mais nova.
   const atualizar = (fn: (p: Progresso) => Progresso) => setProg((p) => ({ ...fn(p), atualizadoEm: Date.now() }));
 
   useEffect(() => salvar(prog), [prog]);
 
+  // Token recusado pelo servidor (ex.: saiu em outro lugar): volta para a tela de entrada.
+  const tokenRecusado = (e: unknown) => {
+    if (!(e instanceof TokenInvalido)) return false;
+    esquecerEntrada();
+    setConta(null);
+    return true;
+  };
+
   // Ao abrir: busca a cópia do servidor e fica com a mais nova.
   useEffect(() => {
-    if (!codigo) return;
+    if (!token) return;
     let vivo = true;
     servidor
-      .carregar(codigo)
+      .carregar(token)
       .then((remoto) => {
         if (!vivo) return;
         if (remoto && (remoto.atualizadoEm ?? 0) > (carregar().atualizadoEm ?? 0)) {
@@ -43,38 +52,39 @@ export default function App() {
         }
         setNuvem('ok');
       })
-      .catch(() => vivo && setNuvem('offline'));
-    esvaziarFila(codigo);
+      .catch((e) => vivo && !tokenRecusado(e) && setNuvem('offline'));
+    esvaziarFila(token).catch(tokenRecusado);
     return () => {
       vivo = false;
     };
-  }, [codigo]);
+  }, [token]);
 
   // Envia para o servidor 1,5 s depois da última mudança.
   useEffect(() => {
-    if (!prog.atualizadoEm || !codigo) return;
+    if (!prog.atualizadoEm || !token) return;
     const t = window.setTimeout(() => {
       servidor
-        .salvar(codigo, prog)
+        .salvar(token, prog)
         .then(() => setNuvem('ok'))
-        .catch(() => setNuvem('offline'));
+        .catch((e) => !tokenRecusado(e) && setNuvem('offline'));
     }, 1500);
     return () => window.clearTimeout(t);
-  }, [prog, codigo]);
+  }, [prog, token]);
 
-  if (!numero || !codigo) {
+  if (!numero || !token) {
     return (
       <div className="app">
         <Teia className="teia-canto tl" tamanho={150} />
         <Teia className="teia-canto br" tamanho={150} />
         <Entrada
-          onEntrar={async (num) => {
-            const r = await entrarComNumero(num, prog);
-            const pr = mesclarPadrao(r.progresso);
-            setProg(pr);
-            salvar(pr);
-            guardarNumero(num);
-            setNumero(num);
+          onEntrar={async (num, mae, criar) => {
+            const r = await entrar(num, mae, criar, prog);
+            if (r.ok) {
+              const pr = mesclarPadrao(r.progresso);
+              setProg(pr);
+              salvar(pr);
+              setConta(r.entrada);
+            }
             return r;
           }}
         />
@@ -120,7 +130,7 @@ export default function App() {
             const passou = taxa >= ACERTO_PARA_PASSAR;
             const liberadas = passou && prox && !p.liberadas.includes(prox) ? [...p.liberadas, prox] : p.liberadas;
             const proxCor = CORES_SKATE.find((c) => !p.coresGanhas.includes(c.id));
-            enviarSessao(codigo, { fase: faseId, acertos, total, erros: errosItens });
+            enviarSessao(token, { fase: faseId, acertos, total, erros: errosItens }).catch(tokenRecusado);
             atualizar((cur) => ({
               ...cur,
               sessoes: cur.sessoes + 1,
@@ -164,15 +174,15 @@ export default function App() {
         <Adulto
           prog={prog}
           atualizar={atualizar}
-          codigo={codigo}
+          token={token}
           numero={numero}
           nuvem={nuvem}
           onTrocarJogador={() => {
-            esquecerNumero();
-            // o próximo jogador começa do zero neste aparelho (o progresso do Davi está salvo no servidor)
+            esquecerEntrada(token);
+            // o próximo jogador começa do zero neste aparelho (o progresso do jogador anterior está salvo no servidor)
             setProg(progressoInicial());
             salvar(progressoInicial());
-            setNumero(null);
+            setConta(null);
             setTela({ nome: 'inicio' });
           }}
           onVoltar={() => setTela({ nome: 'mapa' })}
@@ -517,7 +527,7 @@ function Adulto({
   prog,
   atualizar,
   numero,
-  codigo,
+  token,
   nuvem,
   onTrocarJogador,
   onVoltar,
@@ -525,7 +535,7 @@ function Adulto({
   prog: Progresso;
   atualizar: (fn: (p: Progresso) => Progresso) => void;
   numero: string;
-  codigo: string;
+  token: string;
   nuvem: EstadoNuvem;
   onTrocarJogador: () => void;
   onVoltar: () => void;
@@ -539,10 +549,10 @@ function Adulto({
   useEffect(() => {
     if (!ok) return;
     servidor
-      .historico(codigo)
+      .historico(token)
       .then(setHistorico)
       .catch(() => setHistorico([]));
-  }, [ok, codigo]);
+  }, [ok, token]);
 
   const cabecalho = (
     <header className="barra">
@@ -596,7 +606,7 @@ function Adulto({
         <h3>Jogador {numero}</h3>
         <p className="nota">
           {nuvem === 'ok'
-            ? '✅ Progresso salvo no servidor. Em qualquer celular ou tablet, é só abrir o jogo e digitar ' + numero + '.'
+            ? '✅ Progresso salvo no servidor. Em qualquer celular ou tablet, é só abrir o jogo e digitar o número ' + numero + ' e o primeiro nome da mãe.'
             : nuvem === 'offline'
               ? '⚠️ Sem conexão agora: salvo neste aparelho e enviado quando a internet voltar.'
               : 'Verificando…'}
@@ -771,52 +781,124 @@ function Adulto({
 
 // ---------------- Entrada com número ----------------
 
-function Entrada({ onEntrar }: { onEntrar: (num: string) => Promise<{ novo: boolean }> }) {
+const MSG_ERRO: Record<ErroEntrada, string> = {
+  nao_existe: '',
+  nome_errado: 'Esse nome não confere com o deste número. Peça ajuda a um adulto.',
+  bloqueado: 'Muitas tentativas erradas. Espere 15 minutos e tente de novo.',
+  muitas_tentativas: 'Muitas tentativas agora. Espere alguns minutos e tente de novo.',
+  dados_invalidos: 'Digite o primeiro nome da mãe.',
+  sem_internet: 'Não consegui conectar. Tente de novo.',
+};
+
+function Entrada({
+  onEntrar,
+}: {
+  onEntrar: (num: string, mae: string, criar: boolean) => Promise<ResultadoEntrada>;
+}) {
   const [num, setNum] = useState('');
-  const [estado, setEstado] = useState<'' | 'buscando' | 'erro'>('');
+  const [passo, setPasso] = useState<'numero' | 'mae' | 'cadastrar'>('numero');
+  const [mae, setMae] = useState('');
+  const [estado, setEstado] = useState<'' | 'buscando'>('');
+  const [erro, setErro] = useState('');
   const tecla = (d: string) => setNum((n) => (n.length < 4 ? n + d : n));
-  const entrar = async () => {
-    if (num.length !== 4) return;
+
+  const tentar = async (criar: boolean) => {
+    if (num.length !== 4 || mae.trim().length < 2) return;
     setEstado('buscando');
-    try {
-      await onEntrar(num);
-    } catch {
-      setEstado('erro');
-    }
+    setErro('');
+    const r = await onEntrar(num, mae, criar);
+    setEstado('');
+    if (r.ok) return;
+    if (r.erro === 'nao_existe') setPasso('cadastrar');
+    else setErro(MSG_ERRO[r.erro]);
   };
+
+  const titulo = (
+    <h1 className="titulo">
+      <span className="t1">JOGO DO</span>
+      <span className="t2 menor">DAVI</span>
+    </h1>
+  );
+
+  if (passo === 'numero') {
+    return (
+      <main className="tela entrada">
+        {titulo}
+        <Davi tamanho={90} />
+        <p className="texto-claro">Qual é o seu número?</p>
+        <div className="caixas-numero">
+          {[0, 1, 2, 3].map((i) => (
+            <span key={i} className={i === num.length ? 'ativa' : ''}>
+              {num[i] ?? ''}
+            </span>
+          ))}
+        </div>
+        <div className="teclado">
+          {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
+            <button key={d} className="tecla" onClick={() => tecla(d)}>
+              {d}
+            </button>
+          ))}
+          <button className="tecla apagar" onClick={() => setNum((n) => n.slice(0, -1))} aria-label="Apagar">
+            ⌫
+          </button>
+          <button className="tecla" onClick={() => tecla('0')}>
+            0
+          </button>
+          <button className="tecla ok" onClick={() => setPasso('mae')} disabled={num.length !== 4} aria-label="Continuar">
+            ✓
+          </button>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="tela entrada">
-      <h1 className="titulo">
-        <span className="t1">JOGO DO</span>
-        <span className="t2 menor">DAVI</span>
-      </h1>
-      <Davi tamanho={90} />
-      <p className="texto-claro">Qual é o seu número?</p>
-      <div className="caixas-numero">
-        {[0, 1, 2, 3].map((i) => (
-          <span key={i} className={i === num.length ? 'ativa' : ''}>
-            {num[i] ?? ''}
-          </span>
-        ))}
-      </div>
-      <div className="teclado">
-        {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
-          <button key={d} className="tecla" onClick={() => tecla(d)}>
-            {d}
-          </button>
-        ))}
-        <button className="tecla apagar" onClick={() => setNum((n) => n.slice(0, -1))} aria-label="Apagar">
-          ⌫
+      {titulo}
+      <p className="texto-claro">Número {num}</p>
+      {passo === 'mae' ? (
+        <p className="texto-claro">Qual é o primeiro nome da mãe?</p>
+      ) : (
+        <p className="texto-claro">
+          O número {num} é novo. Cadastrar com o nome da mãe <b>{mae.trim().toUpperCase()}</b>? Nas próximas vezes, é só
+          digitar o mesmo número e o mesmo nome.
+        </p>
+      )}
+      <form
+        className="porta"
+        onSubmit={(e) => {
+          e.preventDefault();
+          tentar(passo === 'cadastrar');
+        }}
+      >
+        {passo === 'mae' && (
+          <input
+            value={mae}
+            onChange={(e) => setMae(e.target.value)}
+            autoFocus
+            autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
+            maxLength={60}
+            aria-label="Primeiro nome da mãe"
+          />
+        )}
+        <button className="botao-medio" disabled={estado === 'buscando' || mae.trim().length < 2}>
+          {passo === 'mae' ? 'Entrar' : 'Cadastrar'}
         </button>
-        <button className="tecla" onClick={() => tecla('0')}>
-          0
-        </button>
-        <button className="tecla ok" onClick={entrar} disabled={num.length !== 4 || estado === 'buscando'} aria-label="Entrar">
-          ✓
-        </button>
-      </div>
+      </form>
+      <button
+        className="botao-medio"
+        onClick={() => {
+          setPasso(passo === 'cadastrar' ? 'mae' : 'numero');
+          setErro('');
+        }}
+      >
+        Voltar
+      </button>
       {estado === 'buscando' && <p className="nota">Entrando…</p>}
-      {estado === 'erro' && <p className="nota">Não consegui conectar. Tente de novo.</p>}
+      {erro && <p className="nota">{erro}</p>}
     </main>
   );
 }
