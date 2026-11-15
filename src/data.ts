@@ -260,7 +260,7 @@ export const FASES: Fase[] = [
 export const RODADAS_POR_JOGO = 4;
 export const ACERTO_PARA_PASSAR = 0.8;
 
-// Cores de skate que o Davi ganha ao terminar sessões.
+// Cores de skate que o jogador ganha ao terminar sessões.
 export const CORES_SKATE = [
   { id: 'roxo', nome: 'Roxo', cor: '#7b3fe4' },
   { id: 'vermelho', nome: 'Vermelho', cor: '#e23b3b' },

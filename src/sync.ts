@@ -1,47 +1,15 @@
-// Cópia do progresso no servidor (Supabase), para não perder a evolução do Davi.
-// Cada aparelho tem um "código do jogador". Com o mesmo código, outro aparelho recupera o progresso.
+// Cópia do progresso no servidor (Supabase), para não perder a evolução do jogador.
+// Para entrar: número de 4 dígitos + primeiro nome da mãe (cadastrado na primeira vez).
+// O nome da mãe NÃO fica guardado no aparelho: depois de entrar, o servidor devolve um
+// token aleatório, e só ele (com o número) fica salvo aqui.
 // Se estiver sem internet, o jogo segue normal e salva no aparelho; a cópia vai quando der.
 import type { Progresso } from './storage';
 
 const URL_SUPABASE = 'https://klydltytocppfvofowbf.supabase.co';
 // Chave pública (publishable). Só permite chamar as funções jogo_davi_* abaixo.
 const CHAVE_PUBLICA = 'sb_publishable_3VXB8zqdJ40ecWHH3RZ4sg_BKJaWBSu';
-const CHAVE_CODIGO = 'jogo-davi:codigo';
 
-const ALFABETO = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sem 0/O e 1/I para não confundir
-
-export function novoCodigo(): string {
-  const bytes = new Uint8Array(10);
-  crypto.getRandomValues(bytes);
-  const s = Array.from(bytes, (b) => ALFABETO[b % ALFABETO.length]).join('');
-  return `${s.slice(0, 5)}-${s.slice(5)}`;
-}
-
-export function normalizarCodigo(c: string): string {
-  const s = c.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  return s.length === 10 ? `${s.slice(0, 5)}-${s.slice(5)}` : s;
-}
-
-export function codigoDoAparelho(): string {
-  try {
-    let c = localStorage.getItem(CHAVE_CODIGO);
-    if (!c) {
-      c = novoCodigo();
-      localStorage.setItem(CHAVE_CODIGO, c);
-    }
-    return c;
-  } catch {
-    return novoCodigo();
-  }
-}
-
-export function trocarCodigo(c: string) {
-  try {
-    localStorage.setItem(CHAVE_CODIGO, c);
-  } catch {
-    /* ignora */
-  }
-}
+export class TokenInvalido extends Error {}
 
 async function rpc<T>(fn: string, corpo: Record<string, unknown>): Promise<T> {
   const r = await fetch(`${URL_SUPABASE}/rest/v1/rpc/${fn}`, {
@@ -53,29 +21,34 @@ async function rpc<T>(fn: string, corpo: Record<string, unknown>): Promise<T> {
     },
     body: JSON.stringify(corpo),
   });
-  if (!r.ok) throw new Error(`${fn}: ${r.status}`);
+  if (!r.ok) {
+    const txt = await r.text().catch(() => '');
+    if (txt.includes('token_invalido')) throw new TokenInvalido(fn);
+    throw new Error(`${fn}: ${r.status}`);
+  }
   const txt = await r.text();
   return (txt ? JSON.parse(txt) : null) as T;
 }
 
 export const servidor = {
-  salvar: (codigo: string, dados: Progresso) => rpc<string>('jogo_davi_salvar', { p_codigo: codigo, p_dados: dados }),
-  carregar: (codigo: string) => rpc<Progresso | null>('jogo_davi_carregar', { p_codigo: codigo }),
-  registrarSessao: (codigo: string, s: SessaoPendente) =>
-    rpc<null>('jogo_davi_registrar_sessao2', {
-      p_codigo: codigo,
+  salvar: (token: string, dados: Progresso) => rpc<string>('jogo_davi_salvar3', { p_token: token, p_dados: dados }),
+  carregar: (token: string) => rpc<Progresso | null>('jogo_davi_carregar3', { p_token: token }),
+  registrarSessao: (token: string, s: SessaoPendente) =>
+    rpc<null>('jogo_davi_registrar_sessao3', {
+      p_token: token,
       p_fase: s.fase,
       p_acertos: s.acertos,
       p_total: s.total,
       p_erros: s.erros ?? [],
     }),
-  historico: (codigo: string) =>
-    rpc<{ fase: string; acertos: number; total: number; feita_em: string; erros?: string[] }[]>('jogo_davi_historico2', {
-      p_codigo: codigo,
+  historico: (token: string) =>
+    rpc<{ fase: string; acertos: number; total: number; feita_em: string; erros?: string[] }[]>('jogo_davi_historico3', {
+      p_token: token,
     }),
-  migrar: (de: string, para: string) => rpc<null>('jogo_davi_migrar', { p_de: de, p_para: para }),
+  sair: (token: string) => rpc<null>('jogo_davi_sair', { p_token: token }),
 };
 
+// ---------- Fila de sessões ----------
 // Sessões que não conseguiram ir para o servidor ficam numa fila e são reenviadas depois.
 const CHAVE_FILA = 'jogo-davi:fila-sessoes';
 type SessaoPendente = { fase: string; acertos: number; total: number; erros?: string[] };
@@ -95,18 +68,19 @@ function gravarFila(f: SessaoPendente[]) {
   }
 }
 
-export async function enviarSessao(codigo: string, s: SessaoPendente) {
+export async function enviarSessao(token: string, s: SessaoPendente) {
   gravarFila([...lerFila(), s]);
-  await esvaziarFila(codigo);
+  await esvaziarFila(token);
 }
 
-export async function esvaziarFila(codigo: string) {
+export async function esvaziarFila(token: string) {
   let fila = lerFila();
   while (fila.length) {
     const s = fila[0];
     try {
-      await servidor.registrarSessao(codigo, s);
-    } catch {
+      await servidor.registrarSessao(token, s);
+    } catch (e) {
+      if (e instanceof TokenInvalido) throw e;
       return; // sem internet: tenta de novo depois
     }
     fila = fila.slice(1);
@@ -114,57 +88,94 @@ export async function esvaziarFila(codigo: string) {
   }
 }
 
-// ---------- Entrada por número (ex.: 4444) ----------
-// O número vira o código no servidor. Em qualquer aparelho, o mesmo número continua o mesmo progresso.
+// ---------- Entrada (número + nome da mãe) ----------
 
-const CHAVE_NUMERO = 'jogo-davi:numero';
+const CHAVE_ENTRADA = 'jogo-davi:entrada';
+// Chaves da versão antiga: o número sozinho e o código aleatório do aparelho.
+const CHAVE_NUMERO_ANTIGO = 'jogo-davi:numero';
+const CHAVE_CODIGO_ANTIGO = 'jogo-davi:codigo';
 
-export function codigoDoNumero(num: string) {
-  return `JOGADOR-${num}`;
-}
+export type Entrada = { numero: string; token: string };
 
-export function numeroSalvo(): string | null {
+export function entradaSalva(): Entrada | null {
   try {
-    return localStorage.getItem(CHAVE_NUMERO);
+    localStorage.removeItem(CHAVE_NUMERO_ANTIGO); // a versão antiga entrava só com o número
+    const e = JSON.parse(localStorage.getItem(CHAVE_ENTRADA) ?? 'null');
+    return e && typeof e.numero === 'string' && typeof e.token === 'string' ? e : null;
   } catch {
     return null;
   }
 }
 
-export function guardarNumero(num: string) {
+function guardarEntrada(e: Entrada) {
   try {
-    localStorage.setItem(CHAVE_NUMERO, num);
+    localStorage.setItem(CHAVE_ENTRADA, JSON.stringify(e));
   } catch {
     /* ignora */
   }
 }
 
-export function esquecerNumero() {
+export function esquecerEntrada(token?: string) {
+  if (token) servidor.sair(token).catch(() => {});
   try {
-    localStorage.removeItem(CHAVE_NUMERO);
+    localStorage.removeItem(CHAVE_ENTRADA);
+    localStorage.removeItem(CHAVE_FILA);
   } catch {
     /* ignora */
   }
 }
+
+// Sem acento, sem maiúsculas e sem espaços sobrando: "  Cárina " e "CARINA" viram "carina".
+export function normalizarNome(nome: string): string {
+  return nome
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export type ErroEntrada = 'nao_existe' | 'nome_errado' | 'bloqueado' | 'muitas_tentativas' | 'dados_invalidos' | 'sem_internet';
+export type ResultadoEntrada =
+  | { ok: true; entrada: Entrada; progresso: Progresso; novo: boolean }
+  | { ok: false; erro: ErroEntrada };
 
 function codigoAntigo(): string | null {
   try {
-    return localStorage.getItem(CHAVE_CODIGO);
+    return localStorage.getItem(CHAVE_CODIGO_ANTIGO);
   } catch {
     return null;
   }
 }
 
-// Entra com o número. Fica com o progresso mais avançado entre o do servidor e o deste aparelho,
-// e leva junto o histórico do código antigo (versão anterior do jogo), para nada se perder.
-export async function entrarComNumero(num: string, local: Progresso): Promise<{ progresso: Progresso; novo: boolean }> {
-  const codigo = codigoDoNumero(num);
-  let remoto: Progresso | null = null;
+// Entra com número + nome da mãe. Com criar = true, cadastra o número se ele ainda não existe.
+// Fica com o progresso mais avançado entre o do servidor e o deste aparelho.
+export async function entrar(numero: string, nomeMae: string, criar: boolean, local: Progresso): Promise<ResultadoEntrada> {
+  const antigo = codigoAntigo();
+  let r: { erro?: ErroEntrada; token?: string; novo?: boolean; dados?: Progresso | null };
   try {
-    remoto = await servidor.carregar(codigo);
+    r = await rpc('jogo_davi_entrar', {
+      p_numero: numero,
+      p_mae: normalizarNome(nomeMae),
+      p_criar: criar,
+      p_codigo_antigo: antigo,
+    });
   } catch {
-    return { progresso: local, novo: false }; // sem internet: entra com o que tem aqui
+    return { ok: false, erro: 'sem_internet' };
   }
+  if (r.erro || !r.token) return { ok: false, erro: r.erro ?? 'dados_invalidos' };
+
+  const entrada = { numero, token: r.token };
+  guardarEntrada(entrada);
+  if (antigo) {
+    try {
+      localStorage.removeItem(CHAVE_CODIGO_ANTIGO);
+    } catch {
+      /* ignora */
+    }
+  }
+
+  const remoto = r.dados ?? null;
   const localTemAlgo = local.sessoes > 0;
   let escolhido: Progresso;
   if (!remoto) escolhido = local;
@@ -172,17 +183,8 @@ export async function entrarComNumero(num: string, local: Progresso): Promise<{ 
   else if ((local.sessoes ?? 0) !== (remoto.sessoes ?? 0)) escolhido = local.sessoes > remoto.sessoes ? local : remoto;
   else escolhido = (local.atualizadoEm ?? 0) >= (remoto.atualizadoEm ?? 0) ? local : remoto;
 
-  const antigo = codigoAntigo();
-  try {
-    if (escolhido === local && localTemAlgo) {
-      await servidor.salvar(codigo, { ...local, atualizadoEm: Date.now() });
-    }
-    if (antigo && antigo !== codigo && localTemAlgo) {
-      await servidor.migrar(antigo, codigo);
-      trocarCodigo(codigo);
-    }
-  } catch {
-    /* tenta de novo na próxima vez */
+  if (escolhido === local && localTemAlgo) {
+    servidor.salvar(entrada.token, { ...local, atualizadoEm: Date.now() }).catch(() => {});
   }
-  return { progresso: escolhido, novo: !remoto };
+  return { ok: true, entrada, progresso: escolhido, novo: !remoto };
 }
