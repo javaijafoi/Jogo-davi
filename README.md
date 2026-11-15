@@ -11,9 +11,9 @@ e a trilha de números vai de 5 a 20, com somas e subtrações simples.
 
 ## Progresso e privacidade
 
-- Para entrar, a criança digita um número de 4 dígitos e um adulto digita o primeiro nome da mãe
+- Para entrar, a criança digita um número de 4 dígitos e um adulto digita o primeiro nome da(do) responsável
   (cadastrado na primeira vez; não diferencia maiúsculas, minúsculas nem acentos).
-- O nome da mãe fica no servidor só como hash (bcrypt) e nunca é guardado no aparelho. O aparelho guarda
+- O nome da(do) responsável fica no servidor só como hash (bcrypt) e nunca é guardado no aparelho. O aparelho guarda
   apenas o número e um token aleatório de sessão.
 - Depois de 5 tentativas erradas, o número fica bloqueado por 15 minutos.
 - O progresso também fica no próprio aparelho (localStorage), então o jogo funciona sem internet.

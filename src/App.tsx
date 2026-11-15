@@ -608,7 +608,7 @@ function Adulto({
         <h3>Jogador {numero}</h3>
         <p className="nota">
           {nuvem === 'ok'
-            ? '✅ Progresso salvo no servidor. Em qualquer celular ou tablet, é só abrir o jogo e digitar o número ' + numero + ' e o primeiro nome da mãe.'
+            ? '✅ Progresso salvo no servidor. Em qualquer celular ou tablet, é só abrir o jogo e digitar o número ' + numero + ' e o primeiro nome da(do) responsável.'
             : nuvem === 'offline'
               ? '⚠️ Sem conexão agora: salvo neste aparelho e enviado quando a internet voltar.'
               : 'Verificando…'}
@@ -788,7 +788,7 @@ const MSG_ERRO: Record<ErroEntrada, string> = {
   nome_errado: 'Esse nome não confere com o deste número. Peça ajuda a um adulto.',
   bloqueado: 'Esse número está bloqueado agora. Tente de novo mais tarde ou peça ajuda a um adulto.',
   muitas_tentativas: 'Muitas tentativas agora. Espere alguns minutos e tente de novo.',
-  dados_invalidos: 'Digite o primeiro nome da mãe.',
+  dados_invalidos: 'Digite o primeiro nome da(do) responsável.',
   sem_internet: 'Não consegui conectar. Tente de novo.',
 };
 
@@ -868,10 +868,10 @@ function Entrada({
       {titulo}
       <p className="texto-claro">Número {num}</p>
       {passo === 'mae' ? (
-        <p className="texto-claro">Qual é o primeiro nome da mãe?</p>
+        <p className="texto-claro">Qual é o primeiro nome da(do) responsável?</p>
       ) : (
         <p className="texto-claro">
-          O número {num} é novo. Cadastrar com o nome da mãe <b>{mae.trim().toUpperCase()}</b>? Nas próximas vezes, é só
+          O número {num} é novo. Cadastrar com o nome da(do) responsável <b>{mae.trim().toUpperCase()}</b>? Nas próximas vezes, é só
           digitar o mesmo número e o mesmo nome.
         </p>
       )}
@@ -891,7 +891,7 @@ function Entrada({
             autoCapitalize="characters"
             spellCheck={false}
             maxLength={60}
-            aria-label="Primeiro nome da mãe"
+            aria-label="Primeiro nome da(do) responsável"
           />
         )}
         <button className="botao-medio" disabled={estado === 'buscando' || mae.trim().length < 2}>
