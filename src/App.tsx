@@ -855,7 +855,7 @@ function Entrada({
           <summary>Primeira vez? Veja como criar seu jogador</summary>
           <ol>
             <li>Escolha um número de 4 dígitos só seu (por exemplo, o dia e o mês do seu aniversário).</li>
-            <li>Um adulto digita o primeiro nome da mãe. Ele funciona como a senha do jogador.</li>
+            <li>Um adulto digita o primeiro nome da(do) responsável. Ele funciona como a senha do jogador.</li>
             <li>Confirme o cadastro. Nas próximas vezes, em qualquer aparelho, é só usar o mesmo número e o mesmo nome.</li>
           </ol>
         </details>
