@@ -24,12 +24,12 @@ declare
   mae text := jogo_davi_normalizar_mae(p_mae);
   tok text;
   cod text := 'JOGADOR-' || p_numero;
-  ip text := jogo_davi_ip();
+  v_ip text := jogo_davi_ip();
 begin
   if p_numero !~ '^[0-9]{4}$' or char_length(mae) < 2 or char_length(mae) > 60 then
     return jsonb_build_object('erro', 'dados_invalidos');
   end if;
-  if (select count(*) from jogo_davi_tentativas t where t.ip = jogo_davi_entrar.ip and t.em > now() - interval '10 minutes') >= 20 then
+  if (select count(*) from jogo_davi_tentativas t where t.ip = v_ip and t.em > now() - interval '10 minutes') >= 20 then
     return jsonb_build_object('erro', 'muitas_tentativas');
   end if;
 
@@ -49,7 +49,7 @@ begin
       return jsonb_build_object('erro', 'bloqueado');
     end if;
     if crypt(mae, c.mae_hash) <> c.mae_hash then
-      insert into jogo_davi_tentativas (ip) values (ip);
+      insert into jogo_davi_tentativas (ip) values (v_ip);
       delete from jogo_davi_tentativas where em < now() - interval '1 day';
       update jogo_davi_contas set
         falhas = case when falhas + 1 >= 5 then 0 else falhas + 1 end,
