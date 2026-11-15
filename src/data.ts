@@ -128,11 +128,12 @@ export type TipoJogo =
   | 'toque-quantidade'
   | 'depois'
   | 'soma'
-  | 'subtracao';
+  | 'subtracao'
+  | 'dez-mais';
 
 export type Fase = {
   id: string;
-  trilha: 'letras' | 'numeros' | 'contas';
+  trilha: 'letras' | 'numeros' | 'contas' | 'familia';
   numero: string;
   titulo: string;
   descricao: string;
@@ -146,7 +147,36 @@ export type Fase = {
   maximo?: number;
 };
 
+// ---------- Família da semana ----------
+// Troque aqui para mudar o foco da semana (ex.: ['BA', 'BO'] e palavras com BA/BO).
+export const FAMILIA_SEMANA = {
+  titulo: 'Família do C',
+  silabas: ['CA', 'CO'],
+  palavras: [
+    { palavra: 'VACA', silabas: ['VA', 'CA'], figura: '🐄' },
+    { palavra: 'COCO', silabas: ['CO', 'CO'], figura: '🥥' },
+    { palavra: 'FOCA', silabas: ['FO', 'CA'], figura: '🦭' },
+    { palavra: 'CAMA', silabas: ['CA', 'MA'], figura: '🛏️' },
+    { palavra: 'BOCA', silabas: ['BO', 'CA'], figura: '👄' },
+    { palavra: 'CASA', silabas: ['CA', 'SA'], figura: '🏠' },
+    { palavra: 'COPO', silabas: ['CO', 'PO'], figura: '🥛' },
+    { palavra: 'MACACO', silabas: ['MA', 'CA', 'CO'], figura: '🐒' },
+    { palavra: 'PIPOCA', silabas: ['PI', 'PO', 'CA'], figura: '🍿' },
+    { palavra: 'CAVALO', silabas: ['CA', 'VA', 'LO'], figura: '🐴' },
+  ] as Palavra[],
+};
+
 export const FASES: Fase[] = [
+  {
+    id: 'familia',
+    trilha: 'familia',
+    numero: '★',
+    titulo: FAMILIA_SEMANA.titulo,
+    descricao: FAMILIA_SEMANA.silabas.join(' '),
+    jogos: ['junta-silaba', 'silaba-inicial', 'monta-palavra'],
+    silabas: FAMILIA_SEMANA.silabas,
+    palavras: FAMILIA_SEMANA.palavras,
+  },
   {
     id: 'vogais',
     trilha: 'letras',
@@ -202,13 +232,22 @@ export const FASES: Fase[] = [
     faixa: [0, 10],
   },
   {
-    id: 'num-20',
+    id: 'num-15',
     trilha: 'numeros',
     numero: '3',
-    titulo: 'Números até 20',
-    descricao: '11 até 20',
-    jogos: ['conta-teia', 'depois', 'toque-quantidade'],
-    faixa: [10, 20],
+    titulo: 'Números 11 a 15',
+    descricao: '10 + 1 … 10 + 5',
+    jogos: ['dez-mais', 'conta-teia', 'depois'],
+    faixa: [11, 15],
+  },
+  {
+    id: 'num-20',
+    trilha: 'numeros',
+    numero: '4',
+    titulo: 'Números 16 a 20',
+    descricao: '10 + 6 … 10 + 10',
+    jogos: ['dez-mais', 'conta-teia', 'toque-quantidade'],
+    faixa: [16, 20],
   },
   {
     id: 'soma-5',

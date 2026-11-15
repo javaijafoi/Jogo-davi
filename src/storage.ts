@@ -13,21 +13,36 @@ export type Progresso = {
   sessoes: number;
   errosPorItem: Record<string, number>; // antigo, mantido só para compatibilidade
   itens: Itens; // repetição espaçada por item
+  tempoHoje: { dia: string; ms: number }; // tempo jogado hoje
+  limiteMin: number; // minutos por dia antes do "volta amanhã" (0 = sem limite)
+  treinoFeitoEm: string; // dia em que o treino do dia foi feito
   atualizadoEm: number;
 };
+
+export function hoje(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+export function minutosHoje(p: Progresso): number {
+  return p.tempoHoje?.dia === hoje() ? p.tempoHoje.ms / 60000 : 0;
+}
 
 const CHAVE = 'jogo-davi:v1';
 
 export function progressoInicial(): Progresso {
   return {
     fases: {},
-    liberadas: ['vogais', 'num-5', 'soma-5'],
+    liberadas: ['vogais', 'num-5', 'soma-5', 'familia'],
     teias: 0,
     coresGanhas: ['roxo'],
     corSkate: 'roxo',
     sessoes: 0,
     errosPorItem: {},
     itens: {},
+    tempoHoje: { dia: '', ms: 0 },
+    limiteMin: 20,
+    treinoFeitoEm: '',
     atualizadoEm: 0,
   };
 }
@@ -72,7 +87,14 @@ export function mesclarPadrao(salvo: Partial<Progresso>): Progresso {
   return {
     ...base,
     ...salvo,
-    liberadas: Array.from(new Set([...(salvo.liberadas ?? []), ...base.liberadas])),
+    liberadas: Array.from(
+      new Set([
+        ...(salvo.liberadas ?? []),
+        ...base.liberadas,
+        // a fase "até 20" virou duas (11–15 e 16–20): quem já tinha a de 20 ganha a de 15
+        ...((salvo.liberadas ?? []).includes('num-20') ? ['num-15'] : []),
+      ]),
+    ),
     itens: salvo.itens ?? {},
   };
 }

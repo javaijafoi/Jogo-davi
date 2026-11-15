@@ -38,6 +38,7 @@ export const INFO_JOGOS: Record<TipoJogo, { nome: string; instrucao: string; ico
   depois: { nome: 'Degraus', instrucao: 'Qual número falta na escada?', icone: '🪜' },
   soma: { nome: 'Junta-Junta', instrucao: 'Junte os dois grupos e conte tudo', icone: '➕' },
   subtracao: { nome: 'Vai Embora', instrucao: 'Alguns vão embora. Quantos ficam?', icone: '➖' },
+  'dez-mais': { nome: 'Dez e Mais', instrucao: 'Um quadro cheio é 10. Quanto dá 10 e mais esses?', icone: '🔟' },
 };
 
 function useErros() {
@@ -241,11 +242,19 @@ export function JuntaSilaba({ fase, itens, onAcerto, onErro }: PropsJogo) {
 
 export function SilabaInicial({ fase, rodada: n, itens, onAcerto, onErro }: PropsJogo) {
   const rodada = useMemo(() => {
-    const palavra = escolherPorPeso('sil-ini', PALAVRAS_CVCV, (p) => 'palavra:' + p.palavra, itens);
-    // fase 3: sempre falta a primeira sílaba; fase 4: pode faltar qualquer uma
-    const falta = fase.id === 'palavras' && Math.random() < 0.5 ? palavra.silabas.length - 1 : 0;
+    const lista = fase.trilha === 'familia' && fase.palavras ? fase.palavras : PALAVRAS_CVCV;
+    const palavra = escolherPorPeso('sil-ini', lista, (p) => 'palavra:' + p.palavra, itens);
+    let falta: number;
+    if (fase.trilha === 'familia' && fase.silabas) {
+      // família da semana: o buraco cai sempre numa sílaba da família (CA, CO…)
+      const posicoes = palavra.silabas.map((s, i) => (fase.silabas!.includes(s) ? i : -1)).filter((i) => i >= 0);
+      falta = sortear(posicoes.length ? posicoes : [0]);
+    } else {
+      // fase 3: sempre falta a primeira sílaba; fase 4: pode faltar qualquer uma
+      falta = fase.id === 'palavras' && Math.random() < 0.5 ? palavra.silabas.length - 1 : 0;
+    }
     const certa = palavra.silabas[falta];
-    const pool = Array.from(new Set(PALAVRAS_CVCV.flatMap((p) => p.silabas)));
+    const pool = Array.from(new Set([...PALAVRAS_CVCV, ...lista].flatMap((p) => p.silabas)));
     // distratores parecidos: mesma consoante ou mesma vogal ajudam a olhar com atenção
     const parecidas = pool.filter((s) => s !== certa && (s[0] === certa[0] || s[1] === certa[1]));
     const erradas = sortearVarios(parecidas.length >= 2 ? parecidas : pool, 2, [certa]);
@@ -401,7 +410,7 @@ export function ContaTeia({ fase, itens, onAcerto, onErro }: PropsJogo) {
     <div className="jogo">
       <div className="quadros">
         {quadros.map((q, qi) => (
-          <div className="quadro-10" key={qi}>
+          <div className={`quadro-10 ${rodada.n > 10 ? (qi === 0 ? 'q-dezena' : 'q-unidade') : ''}`} key={qi}>
             {q.map((idx) =>
               idx < rodada.n ? (
                 <button
@@ -419,7 +428,13 @@ export function ContaTeia({ fase, itens, onAcerto, onErro }: PropsJogo) {
           </div>
         ))}
       </div>
-      <div className="dica-toque">Toque em cada um para contar: {marcados.length}</div>
+      {rodada.n > 10 ? (
+        <div className="dica-toque">
+          Um quadro cheio é <b className="dez">10</b>. Mais <b className="uni">{rodada.n - 10}</b>.
+        </div>
+      ) : (
+        <div className="dica-toque">Toque em cada um para contar: {marcados.length}</div>
+      )}
       <div className="fileira">
         {rodada.opcoes.map((x) => (
           <button
@@ -429,7 +444,96 @@ export function ContaTeia({ fase, itens, onAcerto, onErro }: PropsJogo) {
             } ${dica && !feito && x === rodada.n ? 'pulsa' : ''}`}
             onClick={() => tocar(x)}
           >
-            {x}
+            <NumCor n={x} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Número com a dezena em azul e a unidade em vermelho (18 = 1 dezena + 8).
+export function NumCor({ n }: { n: number }) {
+  if (n < 10 || n > 99) return <>{n}</>;
+  return (
+    <span className="numcor">
+      <span className="dez">{Math.floor(n / 10)}</span>
+      <span className="uni">{n % 10}</span>
+    </span>
+  );
+}
+
+// ---------------- Dez e Mais ----------------
+// Um quadro cheio (10) + alguns soltos. 10 + 8 = 18. A opção trocada (81) treina a ordem dos algarismos.
+
+export function DezMais({ fase, itens, onAcerto, onErro }: PropsJogo) {
+  const [min, max] = fase.faixa ?? [11, 15];
+  const rodada = useMemo(() => {
+    const nums = Array.from({ length: max - Math.max(11, min) + 1 }, (_, i) => Math.max(11, min) + i);
+    const n = escolherPorPeso('dez', nums, (x) => 'num:' + x, itens);
+    const k = n - 10;
+    const trocado = k > 0 && k < 10 ? k * 10 + 1 : n + 2;
+    const vizinho = n + (Math.random() < 0.5 ? -1 : 1);
+    const opcoes = embaralhar(Array.from(new Set([n, trocado === n ? n + 2 : trocado, vizinho])));
+    return { n, k, objeto: sortear(OBJETOS_CONTAGEM), opcoes };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const { erros, errar, tremendo, dica } = useErros();
+  const [feito, setFeito] = useState(false);
+
+  const tocar = (x: number) => {
+    if (feito) return;
+    if (x === rodada.n) {
+      setFeito(true);
+      window.setTimeout(() => onAcerto(erros, 'num:' + rodada.n), 700);
+    } else {
+      errar(String(x));
+      onErro('num:' + rodada.n);
+    }
+  };
+
+  return (
+    <div className="jogo">
+      <div className="expressao">
+        <span className="dez">10</span>
+        <span className="op">+</span>
+        <span className="uni">{rodada.k}</span>
+        <span className="op">=</span>
+        <span className={`resp ${feito ? 'cheio' : ''}`}>{feito ? <NumCor n={rodada.n} /> : '?'}</span>
+      </div>
+      <div className="quadros">
+        <div className="quadro-10 q-dezena">
+          {Array.from({ length: 10 }, (_, i) => (
+            <span key={i} className="obj">
+              {rodada.objeto}
+            </span>
+          ))}
+        </div>
+        <div className="quadro-10 q-unidade">
+          {Array.from({ length: 10 }, (_, i) =>
+            i < rodada.k ? (
+              <span key={i} className="obj">
+                {rodada.objeto}
+              </span>
+            ) : (
+              <span key={i} className="obj vazio" />
+            ),
+          )}
+        </div>
+      </div>
+      <div className="dica-toque">
+        O <b className="dez">1</b> da frente é o quadro cheio. O <b className="uni">{rodada.k % 10}</b> é o que sobra.
+      </div>
+      <div className="fileira">
+        {rodada.opcoes.map((x) => (
+          <button
+            key={x}
+            className={`carta numero ${tremendo === String(x) ? 'treme' : ''} ${feito && x === rodada.n ? 'certa' : ''} ${
+              dica && !feito && x === rodada.n ? 'pulsa' : ''
+            }`}
+            onClick={() => tocar(x)}
+          >
+            <NumCor n={x} />
           </button>
         ))}
       </div>
@@ -450,4 +554,5 @@ export const JOGOS: Record<TipoJogo, (p: PropsJogo) => React.JSX.Element> = {
   depois: Depois,
   soma: Soma,
   subtracao: Subtracao,
+  'dez-mais': DezMais,
 };

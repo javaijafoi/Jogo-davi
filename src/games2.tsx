@@ -12,7 +12,7 @@ import {
   sortearVarios,
   type Palavra,
 } from './data';
-import type { PropsJogo } from './games';
+import { NumCor, type PropsJogo } from './games';
 import { escolherPorPeso as escolherP } from './srs';
 
 
@@ -271,7 +271,7 @@ export function Depois({ fase, itens, onAcerto, onErro }: PropsJogo) {
       <div className="trilha-numeros">
         {rodada.seq.map((x, i) => (
           <div key={i} className={`pedra ${i === rodada.buraco ? (feito ? 'cheio' : 'ativo') : ''}`}>
-            {i === rodada.buraco && !feito ? '?' : x}
+            {i === rodada.buraco && !feito ? '?' : <NumCor n={x} />}
           </div>
         ))}
       </div>

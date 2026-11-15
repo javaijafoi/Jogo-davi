@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { ACERTO_PARA_PASSAR, CORES_SKATE, FASES, RODADAS_POR_JOGO, type Fase } from './data';
 import { Davi } from './Davi';
 import { INFO_JOGOS, JOGOS } from './games';
-import { carregar, estrelasPara, mesclarPadrao, progressoInicial, proximaFase, salvar, type Progresso } from './storage';
+import { carregar, estrelasPara, hoje, mesclarPadrao, minutosHoje, progressoInicial, proximaFase, salvar, type Progresso } from './storage';
+import { FASE_TREINO, montarTreino, type PassoPlano } from './treino';
 import { IconeTeia, Teia } from './Teia';
 import { entradaSalva, entrar, enviarSessao, esquecerEntrada, esvaziarFila, servidor, TokenInvalido, type Entrada as DadosEntrada, type ErroEntrada, type ResultadoEntrada } from './sync';
 import { nomeItem, registrarAcerto, registrarErro, TIPOS_ITEM } from './srs';
@@ -12,7 +13,7 @@ type EstadoNuvem = '...' | 'ok' | 'offline';
 type Tela =
   | { nome: 'inicio' }
   | { nome: 'mapa' }
-  | { nome: 'sessao'; faseId: string }
+  | { nome: 'sessao'; faseId: string; plano?: PassoPlano[] }
   | { nome: 'resultado'; faseId: string; acertos: number; total: number; corNova?: string; liberou?: string; novaFase?: boolean }
   | { nome: 'garagem' }
   | { nome: 'adulto' };
@@ -107,6 +108,7 @@ export default function App() {
           prog={prog}
           corSkate={corSkate}
           onFase={(id) => setTela({ nome: 'sessao', faseId: id })}
+          onTreino={() => setTela({ nome: 'sessao', faseId: 'treino', plano: montarTreino(prog) })}
           onVoltar={() => setTela({ nome: 'inicio' })}
           onGaragem={() => setTela({ nome: 'garagem' })}
           onAdulto={() => setTela({ nome: 'adulto' })}
@@ -115,7 +117,15 @@ export default function App() {
       {tela.nome === 'sessao' && (
         <Sessao
           key={tela.faseId + prog.sessoes}
-          fase={FASES.find((f) => f.id === tela.faseId)!}
+          fase={tela.faseId === 'treino' ? FASE_TREINO : FASES.find((f) => f.id === tela.faseId)!}
+          plano={tela.plano}
+          onTempo={(ms) =>
+            atualizar((p) => {
+              const dia = hoje();
+              const antes = p.tempoHoje?.dia === dia ? p.tempoHoje.ms : 0;
+              return { ...p, tempoHoje: { dia, ms: antes + ms } };
+            })
+          }
           prog={prog}
           corSkate={corSkate}
           onSair={() => setTela({ nome: 'mapa' })}
@@ -128,13 +138,15 @@ export default function App() {
             const taxa = acertos / total;
             const p = prog;
             const antes = p.fases[faseId];
-            const prox = proximaFase(faseId);
+            const ehTreino = faseId === 'treino';
+            const prox = ehTreino ? undefined : proximaFase(faseId);
             const passou = taxa >= ACERTO_PARA_PASSAR;
             const liberadas = passou && prox && !p.liberadas.includes(prox) ? [...p.liberadas, prox] : p.liberadas;
             const proxCor = CORES_SKATE.find((c) => !p.coresGanhas.includes(c.id));
             enviarSessao(token, { fase: faseId, acertos, total, erros: errosItens }).catch(tokenRecusado(token));
             atualizar((cur) => ({
               ...cur,
+              treinoFeitoEm: ehTreino ? hoje() : cur.treinoFeitoEm,
               sessoes: cur.sessoes + 1,
               liberadas: Array.from(new Set([...cur.liberadas, ...liberadas])),
               coresGanhas: proxCor ? Array.from(new Set([...cur.coresGanhas, proxCor.id])) : cur.coresGanhas,
@@ -163,7 +175,13 @@ export default function App() {
         <Resultado
           {...tela}
           corSkate={corSkate}
-          onDeNovo={() => setTela({ nome: 'sessao', faseId: tela.faseId })}
+          onDeNovo={() =>
+            setTela(
+              tela.faseId === 'treino'
+                ? { nome: 'sessao', faseId: 'treino', plano: montarTreino(prog) }
+                : { nome: 'sessao', faseId: tela.faseId },
+            )
+          }
           onProxima={tela.liberou ? () => setTela({ nome: 'sessao', faseId: tela.liberou! }) : undefined}
           onMapa={() => setTela({ nome: 'mapa' })}
           onUsarCor={(id) => atualizar((p) => ({ ...p, corSkate: id }))}
@@ -224,6 +242,7 @@ function Mapa(props: {
   prog: Progresso;
   corSkate: string;
   onFase: (id: string) => void;
+  onTreino: () => void;
   onVoltar: () => void;
   onGaragem: () => void;
   onAdulto: () => void;
@@ -232,6 +251,10 @@ function Mapa(props: {
   const letras = FASES.filter((f) => f.trilha === 'letras');
   const numeros = FASES.filter((f) => f.trilha === 'numeros');
   const contas = FASES.filter((f) => f.trilha === 'contas');
+  const familia = FASES.filter((f) => f.trilha === 'familia');
+  const minutos = minutosHoje(prog);
+  const cansou = prog.limiteMin > 0 && minutos >= prog.limiteMin;
+  const treinoFeito = prog.treinoFeitoEm === hoje();
   // Fase atual = a última liberada da trilha de letras
   const atual = [...letras].reverse().find((f) => prog.liberadas.includes(f.id));
 
@@ -239,7 +262,7 @@ function Mapa(props: {
     const livre = prog.liberadas.includes(f.id);
     const est = prog.fases[f.id]?.estrelas ?? 0;
     return (
-      <button className={`predio ${f.trilha} ${livre ? '' : 'trancado'}`} disabled={!livre} onClick={() => onFase(f.id)}>
+      <button className={`predio ${f.trilha} ${livre ? '' : 'trancado'}`} disabled={!livre || cansou} onClick={() => onFase(f.id)}>
         <span className="predio-num">{f.numero}</span>
         <span className="predio-titulo">{f.titulo}</span>
         <span className="predio-desc">{f.descricao}</span>
@@ -276,6 +299,26 @@ function Mapa(props: {
           👤
         </button>
       </header>
+      {cansou && (
+        <div className="descanso">
+          <Davi humor="festa" corSkate={props.corSkate} tamanho={110} />
+          <div className="balao-hq">HORA DE DESCANSAR!</div>
+          <p className="texto-claro">Você jogou {Math.round(minutos)} minutos hoje. Volta amanhã para mais! 🛹</p>
+        </div>
+      )}
+      <button className={`treino-dia ${treinoFeito ? 'feito' : ''}`} onClick={props.onTreino} disabled={cansou}>
+        <span className="treino-estrela">{treinoFeito ? '✓' : '★'}</span>
+        <span>
+          <b>TREINO DO DIA</b>
+          <small>{treinoFeito ? 'Feito hoje! Pode treinar de novo.' : '3 jogos com o que você mais precisa'}</small>
+        </span>
+      </button>
+      <h2 className="secao roxo">FAMÍLIA DA SEMANA</h2>
+      <div className="cidade">
+        {familia.map((f) => (
+          <Predio key={f.id} f={f} />
+        ))}
+      </div>
       <h2 className="secao">LETRAS</h2>
       <div className="cidade">
         {letras.map((f) => (
@@ -301,7 +344,7 @@ function Mapa(props: {
           <Predio key={f.id} f={f} />
         ))}
         <div className="predio em-breve">
-          <span className="predio-num">4</span>
+          <span className="predio-num">5</span>
           <span className="predio-titulo">Números até 100</span>
           <span className="predio-desc">em breve</span>
         </div>
@@ -320,9 +363,19 @@ function Sessao(props: {
   onFim: (acertos: number, total: number, errosItens: string[]) => void;
   onErroItem: (item: string) => void;
   onAcertoItem: (item: string, erros: number) => void;
+  plano?: PassoPlano[];
+  onTempo: (ms: number) => void;
 }) {
   const { fase } = props;
-  const total = fase.jogos.length * RODADAS_POR_JOGO;
+  const [plano] = useState<PassoPlano[]>(() => props.plano ?? fase.jogos.map((tipo) => ({ fase, tipo })));
+  const total = plano.length * RODADAS_POR_JOGO;
+  // conta o tempo jogado (para o "volta amanhã")
+  const onTempo = useRef(props.onTempo);
+  onTempo.current = props.onTempo;
+  useEffect(() => {
+    const t0 = Date.now();
+    return () => onTempo.current(Date.now() - t0);
+  }, []);
   const [passo, setPasso] = useState(0); // 0..total-1
   const [acertos, setAcertos] = useState(0);
   const [festa, setFesta] = useState<string | null>(null);
@@ -331,7 +384,8 @@ function Sessao(props: {
   const fim = useRef(false);
   const jogoIdx = Math.floor(passo / RODADAS_POR_JOGO);
   const rodada = passo % RODADAS_POR_JOGO;
-  const tipo = fase.jogos[jogoIdx];
+  const tipo = plano[jogoIdx].tipo;
+  const faseDoJogo = plano[jogoIdx].fase;
   const Jogo = JOGOS[tipo];
   const info = INFO_JOGOS[tipo];
   const errosSessao = useRef<Set<string>>(new Set());
@@ -385,7 +439,7 @@ function Sessao(props: {
         ) : (
           <Jogo
             key={passo}
-            fase={fase}
+            fase={faseDoJogo}
             rodada={rodada}
             itens={props.prog.itens}
             onAcerto={acertou}
@@ -703,6 +757,29 @@ function Adulto({
               </tbody>
             </table>
           </>
+        )}
+      </section>
+
+      <section className="painel">
+        <h3>Tempo por dia</h3>
+        <p className="nota">
+          Hoje: {Math.round(minutosHoje(prog))} min. Ao chegar no limite, o jogo mostra "Hora de descansar! Volta amanhã".
+        </p>
+        <div className="chips">
+          {[10, 20, 30, 0].map((m) => (
+            <button
+              key={m}
+              className={`chip opcao ${prog.limiteMin === m ? 'on' : ''}`}
+              onClick={() => atualizar((p) => ({ ...p, limiteMin: m }))}
+            >
+              {m === 0 ? 'Sem limite' : `${m} min`}
+            </button>
+          ))}
+        </div>
+        {prog.limiteMin > 0 && minutosHoje(prog) >= prog.limiteMin && (
+          <button className="botao-medio" style={{ marginTop: 10 }} onClick={() => atualizar((p) => ({ ...p, tempoHoje: { dia: hoje(), ms: 0 } }))}>
+            Liberar mais um pouco hoje
+          </button>
         )}
       </section>
 

@@ -418,3 +418,28 @@ button:disabled { cursor: default; }
   padding-left: 20px;
   line-height: 1.4;
 }
+/* ---------- Treino do dia, família da semana, descanso, dezenas ---------- */
+.treino-dia {
+  width: 100%; display: flex; align-items: center; gap: 14px; text-align: left;
+  padding: 14px 16px; border-radius: 18px;
+  background: linear-gradient(135deg, var(--amarelo), #ffb02e); color: var(--tinta);
+  box-shadow: var(--sombra);
+}
+.treino-dia b { display: block; font-size: 22px; letter-spacing: 1px; }
+.treino-dia small { font-size: 15px; }
+.treino-dia.feito { background: linear-gradient(135deg, #b9e8c4, #7fd197); }
+.treino-dia:disabled { filter: grayscale(.8) brightness(.6); }
+.treino-estrela { width: 52px; height: 52px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--tinta); color: var(--amarelo); font-size: 30px; }
+.secao.roxo { color: #b48cff; }
+.predio.familia { background: repeating-linear-gradient(0deg, transparent 0 22px, rgba(255,255,255,.08) 22px 24px), linear-gradient(#7b3fe4, #4f22a3); }
+.descanso { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px; border-radius: 20px; background: rgba(255,255,255,.08); }
+.dez { color: var(--azul); }
+.uni { color: var(--vermelho); }
+.carta .dez, .pedra .dez { color: var(--azul-escuro); }
+.quadro-10.q-dezena { border-color: #8fb1f0; background: #eef4ff; }
+.quadro-10.q-unidade { border-color: #f0a3a3; background: #fff5f5; }
+.expressao .dez { color: var(--azul); }
+.expressao .uni { color: var(--vermelho); }
+.chip.opcao { border: none; cursor: pointer; font-size: 15px; }
+.chip.opcao.on { background: var(--amarelo); }
+.numcor { display: inline-flex; }
