@@ -443,3 +443,6 @@ button:disabled { cursor: default; }
 .chip.opcao { border: none; cursor: pointer; font-size: 15px; }
 .chip.opcao.on { background: var(--amarelo); }
 .numcor { display: inline-flex; }
+
+.rodape-site{margin:14px 0 4px;font-size:12px;text-align:center;color:rgba(200,215,255,.55)}
+.rodape-site a{color:inherit;text-decoration:underline;text-underline-offset:2px}
