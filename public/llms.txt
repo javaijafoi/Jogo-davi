@@ -1,0 +1,15 @@
+# Jogo do Davi
+
+> Jogo para crianças aprenderem a ler e a contar brincando: método fônico, uma tarefa por tela, erro sem punição e repetição espaçada.
+
+O Jogo do Davi é um jogo educativo para crianças aprenderem a ler (método fônico e silábico) e a contar (números de 5 a 20, somas e subtrações simples). Sessões curtas, uma tarefa por tela, erro sem punição, dica quando a criança empaca e repetição espaçada do que ela erra. Tem área do adulto com o progresso. O progresso é protegido por um número de 4 dígitos e um nome de responsável.
+
+Feito por Peter (@javaijafoi), desenvolvedor brasileiro. Site em português do Brasil.
+
+## Links
+
+- [Abrir Jogo do Davi](https://jogo-davi.vercel.app/)
+- [Portfólio do Peter](https://javaijafoi.vercel.app): Todos os projetos do Peter (jogos, histórias interativas e experimentos com IA).
+- [Código deste projeto](https://github.com/javaijafoi/Jogo-davi): Repositório público no GitHub.
+- [GitHub do Peter](https://github.com/javaijafoi): Perfil do autor.
+- [llms.txt do portfólio](https://javaijafoi.vercel.app/llms.txt): Guia de todos os projetos para IAs.

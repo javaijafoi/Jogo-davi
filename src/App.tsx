@@ -936,6 +936,11 @@ function Entrada({
             <li>Confirme o cadastro. Nas próximas vezes, em qualquer aparelho, é só usar o mesmo número e o mesmo nome.</li>
           </ol>
         </details>
+        <p className="rodape-site">
+          <a href="https://javaijafoi.vercel.app" target="_blank" rel="noopener noreferrer">portfólio do Peter</a>
+          {' · '}
+          <a href="https://github.com/javaijafoi/Jogo-davi" target="_blank" rel="noopener noreferrer">código</a>
+        </p>
       </main>
     );
   }
