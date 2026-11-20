@@ -937,7 +937,7 @@ function Entrada({
           </ol>
         </details>
         <p className="rodape-site">
-          <a href="https://javaijafoi.vercel.app" target="_blank" rel="noopener noreferrer">portfólio do Peter</a>
+          <a href="https://javaijafoi.dev" target="_blank" rel="noopener noreferrer">portfólio do Peter</a>
           {' · '}
           <a href="https://github.com/javaijafoi/Jogo-davi" target="_blank" rel="noopener noreferrer">código</a>
         </p>
