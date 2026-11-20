@@ -1,0 +1,26 @@
+{
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "jogo-davi.vercel.app"
+        }
+      ],
+      "destination": "https://jogodavi.javaijafoi.dev/$1",
+      "statusCode": 301
+    },
+    {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "jogo.javaijafoi.dev"
+        }
+      ],
+      "destination": "https://jogodavi.javaijafoi.dev/$1",
+      "statusCode": 301
+    }
+  ]
+}
